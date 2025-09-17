@@ -1,4 +1,4 @@
-# MuJoCo에 모델 스폰
+# MuJoCo에 모델 스폰 (ctrl 기반)
 
 import os
 import rclpy
@@ -8,16 +8,17 @@ from ament_index_python.packages import get_package_share_directory
 import mujoco
 import mujoco.viewer
 
+
 class MujocoROSNode(Node):
     def __init__(self, model, data):
         super().__init__('mujoco_node')
         self.model = model
         self.data = data
 
-        # joint 이름 → qpos 인덱스 매핑
-        self.joint_name_to_qposaddr = {
-            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, j): model.jnt_qposadr[j]
-            for j in range(model.njnt)
+        # actuator 이름 → ctrl 인덱스 매핑
+        self.actuator_name_to_id = {
+            mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_ACTUATOR, i): i
+            for i in range(model.nu)
         }
 
         self.subscription = self.create_subscription(
@@ -29,11 +30,12 @@ class MujocoROSNode(Node):
         self.get_logger().info('Subscribed to /desired_joint_angles')
 
     def joint_callback(self, msg: JointState):
+
         for name, position in zip(msg.name, msg.position):
-            if name in self.joint_name_to_qposaddr:
-                addr = self.joint_name_to_qposaddr[name]
-                self.data.qpos[addr] = position
-        mujoco.mj_forward(self.model, self.data)
+            if name in self.actuator_name_to_id:
+                act_id = self.actuator_name_to_id[name]
+                self.data.ctrl[act_id] = position  # actuator 입력으로 전달
+        # ctrl은 mj_step() 할 때 physics에 적용됨
 
 
 def main():

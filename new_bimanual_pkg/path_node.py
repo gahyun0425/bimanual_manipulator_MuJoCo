@@ -18,7 +18,6 @@ from sensor_msgs.msg import JointState
 from urdf_parser_py.urdf import URDF
 import yaml, os
 
-
 from new_bimanual_pkg.birrt import BiRRT
 from new_bimanual_pkg.trajectory import plan_trajectory, build_spline, make_joint_trajectory_msg, clamp_eval
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy, QoSHistoryPolicy
@@ -75,6 +74,12 @@ def quat_from_rpy(roll, pitch, yaw):
 class PathNode(Node):
     def __init__(self):
         super().__init__('path_node')
+
+        # --- gripper: MuJoCo direct-publish mode ---
+        self.use_mujoco_grip = True  # 컨트롤러 없으니 True
+        self.mj_grip_topic   = '/mujoco/gripper_set'  # 너의 브리지 입력 토픽명으로 변경
+        self.mj_grip_pub     = self.create_publisher(JointState, self.mj_grip_topic, 10)
+
 
         # IK service client
         self.ik_cli = self.create_client(GetPositionIK, '/compute_ik')
@@ -226,6 +231,33 @@ class PathNode(Node):
         # 주기적으로 한 번만 계획/시각화
         self.timer = self.create_timer(1.0, self.plan_once_and_visualize)
         self.done = False
+
+        # --- 도달 판정 상태 ---
+        self._awaiting_arrival = False     # 트젝 보낸 뒤 true로, 도달 후 false
+        self._arm_goal = {}                # {joint_name: 목표각}
+        self._arrive_count = 0             # 연속 만족 카운트
+        self._arrive_needed = 10           # 몇 번 연속 만족하면 도달로 볼지 (100Hz면 0.1s)
+
+        # 토픽에서 최신 JointState 수신
+        self.js_sub = self.create_subscription(
+            JointState, '/joint_states', self._on_joint_state, 50
+        )
+
+        # 그리퍼 타깃 퍼블리셔(/gripper_target로 보냄)
+        self.grip_target_pub = self.create_publisher(JointState, '/gripper_target', 10)
+
+        # 램프 상태 멤버
+        self._grip_ramp_timer = None
+        self._grip_ramp_t0 = None
+        self._grip_ramp_T = 1.0      # 총 램프 시간(초) – 취향대로
+        self._grip_ramp_rate = 50.0  # 발행 주기(Hz)
+        self._grip_start = {}
+        self._grip_goal  = {}
+
+
+        # --- add this in __init__ ---
+        self.desired_pub = self.create_publisher(JointState, '/desired_joint_angles', 10)
+
 
     # ee frame의 quaternion 값 반환
     def fk_quat_at(self, q: np.ndarray, ee_frame: str):
@@ -473,6 +505,24 @@ class PathNode(Node):
             Qd_samples=outR["Qd_samples"],
         )
 
+        # --- 도달 판정을 위한 목표각 기록 & 감시 시작 ---
+        goal_map = {}
+        if trajL and len(trajL.points) > 0:
+            lastL = trajL.points[-1].positions
+            for nm, q in zip(self.left_names, lastL):
+                goal_map[nm] = float(q)
+
+        if trajR and len(trajR.points) > 0:
+            lastR = trajR.points[-1].positions
+            for nm, q in zip(self.right_names, lastR):
+                goal_map[nm] = float(q)
+
+        self._arm_goal = goal_map
+        self._awaiting_arrival = True
+        self._arrive_count = 0
+        self.get_logger().info(f'Arrival monitoring ON for {len(goal_map)} joints.')
+
+
         now = self.get_clock().now().to_msg()
         if trajL is not None:
             trajL.header.frame_id = 'world'
@@ -599,6 +649,160 @@ class PathNode(Node):
 
         self.traj_pub.publish(traj)
         self.get_logger().info(f"Published JointTrajectory to {self.traj_topic} ({len(traj.points)} points)")
+
+    def close_grippers(self):
+        names = [
+            'gripper_r_joint1','gripper_r_joint2','gripper_r_joint3','gripper_r_joint4',
+            'gripper_l_joint1','gripper_l_joint2','gripper_l_joint3','gripper_l_joint4'
+        ]
+        targets = [1.1,1.0,1.1,1.0, 1.1,1.0,1.1,1.0]
+
+        msg = JointState()
+        msg.name = names
+        msg.position = targets
+
+        # 퍼블리셔: /desired_joint_angles
+        # __init__ 에서 self.desired_pub = self.create_publisher(JointState, '/desired_joint_angles', 10)
+        if not hasattr(self, "_grip_hold_timer"):
+            self._grip_hold_timer = None
+        self._grip_hold_count = 0
+
+        if self._grip_hold_timer:
+            self._grip_hold_timer.cancel()
+            self._grip_hold_timer = None
+
+        def _tick():
+            msg.header.stamp = self.get_clock().now().to_msg()
+            self.desired_pub.publish(msg)
+            self._grip_hold_count += 1
+            if self._grip_hold_count >= 100:  # 100회 ≈ 0.5s @200Hz
+                self._grip_hold_timer.cancel()
+                self._grip_hold_timer = None
+
+        self._grip_hold_timer = self.create_timer(1.0/200.0, _tick)
+        
+    def _on_joint_state(self, msg: JointState):
+        # 도달 감시 중이 아니면 패스
+        if not self._awaiting_arrival or not self._arm_goal:
+            return
+
+        # 관심 조인트만 인덱스 매핑
+        name_to_idx = {n: i for i, n in enumerate(msg.name)}
+        missing = [n for n in self._arm_goal.keys() if n not in name_to_idx]
+        if missing:
+            # 아직 모든 조인트가 joint_states에 안 뜨면 다음 메시지에서 다시 시도
+            return
+
+        # tol 설정(라디안 / 라디안/초)
+        pos_tol = 0.01    # 0.57° 정도
+        vel_tol = 0.02    # 관성/노이즈 고려해 약간 여유
+        # JointState.velocity 길이가 0이거나 일부만 있으면 속도 판정 생략 가능
+        have_vel = (len(msg.velocity) == len(msg.name) and len(msg.velocity) > 0)
+
+        max_pos_err = 0.0
+        max_abs_vel = 0.0
+
+        for jn, q_goal in self._arm_goal.items():
+            idx = name_to_idx[jn]
+            q_cur = msg.position[idx]
+            err = abs(q_cur - q_goal)
+            if err > max_pos_err:
+                max_pos_err = err
+            if have_vel:
+                v = abs(msg.velocity[idx])
+                if v > max_abs_vel:
+                    max_abs_vel = v
+
+        # 판정: 위치가 충분히 가깝고(필수), 속도도 충분히 작으면(있으면) OK
+        pos_ok = (max_pos_err <= pos_tol)
+        vel_ok = (not have_vel) or (max_abs_vel <= vel_tol)
+
+        if pos_ok and vel_ok:
+            self._arrive_count += 1
+        else:
+            self._arrive_count = 0
+
+        # 연속 만족 시 그리퍼 닫고 감시 종료
+        if self._arrive_count >= self._arrive_needed:
+            self._awaiting_arrival = False
+            self.get_logger().info(
+                f'Arrival confirmed: max_pos_err={max_pos_err:.4f}, max_abs_vel={max_abs_vel:.4f}'
+            )
+            # 서서히 닫기: 1.5초 동안, 60Hz로
+            self.start_gripper_ramp(T=2.0, rate_hz=60.0)
+
+    def _ease_smoothstep(self, s: float) -> float:
+        # 0~1 -> 0~1, 가감속이 부드러운 프로파일
+        s = max(0.0, min(1.0, s))
+        return s*s*(3.0 - 2.0*s)
+
+    def _grip_ramp_tick(self):
+        # 진행률
+        now = self.get_clock().now()
+        s = (now - self._grip_ramp_t0).nanoseconds * 1e-9 / max(1e-6, self._grip_ramp_T)
+        s = max(0.0, min(1.0, s))
+        s_ease = self._ease_smoothstep(s)
+
+        # 현재 보간 값 만들기 (원 코드)
+        names = list(self._grip_goal.keys())
+        pos = []
+        for n in names:
+            q0 = self._grip_start.get(n, 0.0)
+            q1 = self._grip_goal[n]
+            pos.append(q0 + (q1 - q0) * s_ease)
+
+        # 퍼블리시 (원 코드)
+        msg = JointState()
+        msg.header.stamp = now.to_msg()
+        msg.name = names
+        msg.position = [float(v) for v in pos]
+        self.grip_target_pub.publish(msg)
+
+        # 종료 처리 (원 코드)
+        if s >= 1.0 and self._grip_ramp_timer is not None:
+            self._grip_ramp_timer.cancel()
+            self._grip_ramp_timer = None
+            self.get_logger().info("Gripper ramp done.")
+
+
+    def start_gripper_ramp(self, goal: dict = None, T: float = 1.0, rate_hz: float = 50.0, start_from: dict = None):
+        """
+        goal: {'joint_name': target, ...}
+        T: 램프 총 시간(초)
+        rate_hz: 발행 주기(Hz)
+        start_from: 시작값(없으면 0.0으로 가정)
+        """
+        # 기본 목표(2,4번은 1.0, 나머지 1.1)
+        if goal is None:
+            goal = {
+                'gripper_r_joint1': 0.9, 'gripper_r_joint2': 0.9,
+                'gripper_r_joint3': 0.9, 'gripper_r_joint4': 0.9,
+                'gripper_l_joint1': 0.9, 'gripper_l_joint2': 0.9,
+                'gripper_l_joint3': 0.9, 'gripper_l_joint4': 0.9,
+            }
+
+        # 시작값 없으면 0.0에서 시작(완전 오픈 가정)
+        if start_from is None:
+            start_from = {n: 0.0 for n in goal.keys()}
+
+        # 상태 저장
+        self._grip_start = {n: float(start_from.get(n, 0.0)) for n in goal.keys()}
+        self._grip_goal  = {n: float(goal[n]) for n in goal.keys()}
+        self._grip_ramp_T = float(T)
+        self._grip_ramp_rate = float(rate_hz)
+
+        # 기존 타이머 정리 후 새로 시작
+        if self._grip_ramp_timer is not None:
+            self._grip_ramp_timer.cancel()
+            self._grip_ramp_timer = None
+
+        self._grip_ramp_t0 = self.get_clock().now()
+        period = 1.0 / max(1.0, self._grip_ramp_rate)
+        self._grip_ramp_timer = self.create_timer(period, self._grip_ramp_tick)
+        self.get_logger().info(f"Gripper ramp start: T={self._grip_ramp_T:.2f}s @ {self._grip_ramp_rate:.0f}Hz")
+
+
+
 
 
 def main():

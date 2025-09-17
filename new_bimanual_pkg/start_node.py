@@ -26,6 +26,26 @@ class BirrtTrajectoryExecutor(Node):
             "arm_r_joint4","arm_r_joint5","arm_r_joint6","arm_r_joint7"
         ])
 
+        # __init__ 내
+        self.declare_parameter('gripper_joint_names', [
+            "gripper_r_joint1","gripper_r_joint2","gripper_r_joint3","gripper_r_joint4",
+            "gripper_l_joint1","gripper_l_joint2","gripper_l_joint3","gripper_l_joint4",
+        ])
+        self.gripper_joint_names: List[str] = list(self.get_parameter('gripper_joint_names').value)
+
+        # 현재 그리퍼 타깃(기본값: 열림 0.0)
+        self._grip_target = {n: 0.0 for n in self.gripper_joint_names}
+
+        # 외부에서 그리퍼 목표를 넣어줄 토픽 (JointState)
+        self.declare_parameter('gripper_target_topic', '/gripper_target')
+        self.gripper_target_topic: str = self.get_parameter('gripper_target_topic').value
+        self.sub_grip = self.create_subscription(JointState, self.gripper_target_topic,
+                                                self._on_gripper_target, 10)
+
+        self.get_logger().info(f"[executor] grippers: {self.gripper_joint_names}")
+        self.get_logger().info(f"[executor] grip target listen: {self.gripper_target_topic}")
+
+
         self.declare_parameter('input_topic',   '/birrt/trajectory')
         self.declare_parameter('left_output_topic',  '/left_arm_controller/joint_trajectory')
         self.declare_parameter('right_output_topic',  '/right_arm_controller/joint_trajectory')
@@ -182,13 +202,39 @@ class BirrtTrajectoryExecutor(Node):
         self._stream_start = self.get_clock().now()
         self.get_logger().info(f"[executor] start streaming JointState -> {self.stream_topic}")
 
+    def _on_gripper_target(self, msg: JointState):
+        for n, q in zip(msg.name, msg.position):
+            if n in self._grip_target:
+                self._grip_target[n] = float(q)
+
+        # ★ 즉시 한 번 내보내기 (팔 트젝 없을 땐 그리퍼만)
+        js = JointState()
+        js.header.stamp = self.get_clock().now().to_msg()
+        if self._stream_traj is None:
+            js.name = list(self.gripper_joint_names)
+            js.position = [self._grip_target[n] for n in self.gripper_joint_names]
+        else:
+            # 팔 + 그리퍼 합치기 (기존 방식)
+            last = self._stream_traj.points[-1].positions
+            js.name = list(self._stream_traj.joint_names) + self.gripper_joint_names
+            js.position = list(last) + [self._grip_target[n] for n in self.gripper_joint_names]
+        self.pub_js.publish(js)
+
     # ===== JointState 스트리밍 타이머 =====
     def _stream_tick(self):
-        if self._stream_traj is None or self._stream_times is None or self._stream_start is None:
-            return
         now = self.get_clock().now()
-        t = (now - self._stream_start).nanoseconds * 1e-9
 
+        if self._stream_traj is None or self._stream_times is None or self._stream_start is None:
+            # ★ 팔 궤적이 없어도 그리퍼만 계속 내보내기
+            js = JointState()
+            js.header.stamp = now.to_msg()
+            js.name = list(self.gripper_joint_names)
+            js.position = [self._grip_target[n] for n in self.gripper_joint_names]
+            self.pub_js.publish(js)
+            return
+
+        # --- 이하 기존 로직 (팔 + 그리퍼 합쳐서 퍼블리시) ---
+        t = (now - self._stream_start).nanoseconds * 1e-9
         pts = self._stream_traj.points
         times = self._stream_times
 
@@ -205,11 +251,18 @@ class BirrtTrajectoryExecutor(Node):
             q1 = np.array(pts[i+1].positions, dtype=float)
             q = (1.0 - s) * q0 + s * q1
 
+        names_arm = list(self._stream_traj.joint_names)
+        pos_arm   = [float(v) for v in q]
+        names_out = names_arm + self.gripper_joint_names
+        pos_out   = pos_arm   + [self._grip_target[n] for n in self.gripper_joint_names]
+
         js = JointState()
         js.header.stamp = now.to_msg()
-        js.name = list(self._stream_traj.joint_names)   # 입력 궤적의 이름/순서 유지 (7 또는 14)
-        js.position = [float(v) for v in q]
+        js.name = names_out
+        js.position = pos_out
         self.pub_js.publish(js)
+
+
 
 
 def main(args=None):
