@@ -26,7 +26,7 @@ def _ensure_client(timeout: float = 2.0):
             raise RuntimeError("GetStateValidity not available")
         
 # joint limit 판단. Moveit planning scene에서 충돌 판단 후 반환
-def is_state_vaild(
+def is_state_valid(
         q: np.ndarray, # 검사할 관절각 벡터
         joint_names: list, # 관절 이름 리스트 (Moveit/urdf 순서와 동일해야 함.)
         lb: np.ndarray, # min limit

@@ -19,8 +19,21 @@ from urdf_parser_py.urdf import URDF
 import yaml, os
 
 from new_bimanual_pkg.birrt import BiRRT
+from new_bimanual_pkg.constraint_birrt import ConstraintBiRRT 
 from new_bimanual_pkg.trajectory import plan_trajectory, build_spline, make_joint_trajectory_msg, clamp_eval
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy, QoSHistoryPolicy
+
+# --- constraints & constrained BiRRT helpers ---
+from new_bimanual_pkg.constraint import (
+    build_rotation_constraints,
+    build_place_constraints,
+    build_pot_grasp_projector,
+)
+
+from std_msgs.msg import String
+import json, time
+
+
 
 def load_joint_limits(urdf_path: str, joint_limits_yaml: str, joint_names: list):
     # URDF에서 설정한 joint_limit 값으로 lb, ub 설정
@@ -71,9 +84,19 @@ def quat_from_rpy(roll, pitch, yaw):
     qz = cr*cp*sy - sr*sp*cy
     return [qx, qy, qz, qw]
 
+def yaw_rot_quat(yaw_rad: float):
+    """Z축(yaw) 회전만 갖는 쿼터니언 [x,y,z,w]"""
+    c = math.cos(yaw_rad*0.5); s = math.sin(yaw_rad*0.5)
+    return [0.0, 0.0, s, c]
+
+
 class PathNode(Node):
     def __init__(self):
         super().__init__('path_node')
+
+        from rclpy.callback_groups import ReentrantCallbackGroup
+        self.cbgroup = ReentrantCallbackGroup()
+
 
         # --- gripper: MuJoCo direct-publish mode ---
         self.use_mujoco_grip = True  # 컨트롤러 없으니 True
@@ -82,7 +105,7 @@ class PathNode(Node):
 
 
         # IK service client
-        self.ik_cli = self.create_client(GetPositionIK, '/compute_ik')
+        self.ik_cli = self.create_client(GetPositionIK, '/compute_ik', callback_group=self.cbgroup)
         if not self.ik_cli.wait_for_service(timeout_sec=5.0):
             self.get_logger().warn("'/compute_ik' service not available yet; waiting in background.")
 
@@ -155,7 +178,7 @@ class PathNode(Node):
         seed_left  = [0.0] * len(left_names)
         seed_right = [0.0] * len(right_names)
 
-        base_frame = 'arm_base_link' 
+        base_frame = 'world' 
 
         ik_l = self.compute_ik_via_moveit(
             group='left_arm',
@@ -188,7 +211,7 @@ class PathNode(Node):
             raise RuntimeError("Right IK failed (TRAC-IK)")
         
         # moveit group & joint limit
-        self.group_name = 'manipulator'
+        self.group_name = 'both_arms'
         
         joint_limits_yaml = '/home/gaga/bimanual_ws/src/bimanual_moveit_config/config/joint_limits.yaml'
         self.lb, self.ub = load_joint_limits(urdf_path, joint_limits_yaml, self.joint_names)
@@ -258,6 +281,51 @@ class PathNode(Node):
         # --- add this in __init__ ---
         self.desired_pub = self.create_publisher(JointState, '/desired_joint_angles', 10)
 
+        # ==== after existing __init__ content ====
+        # 파지 완료 후 회전/플레이스 트리거 상태
+        self._grasp_done = False
+        self._did_rotate_place = False
+        # 파지 완료되면 이 타이머 루프가 회전→플레이스 진행
+        self._after_grasp_timer = self.create_timer(0.1, self._after_grasp_loop, callback_group=self.cbgroup)
+
+
+        self.use_absolute_after_grasp_place = True  # True면 절대 포즈로 바로 이동, False면 기존 rotate→place
+
+        self.after_grasp_target = {
+            "frame_id": "world",
+            "pos": [0.5, 0.0, 1.1],   # pot 중심 (x,y,z)
+            "rpy_deg": [0.0, 0.0, 0.0], # pot을 y축으로 90° 회전
+            "eps_xy_mm": 80.0,           # pot XY 크기(±0.08, ±0.12)에 맞춤
+            "eps_z_mm": 60.0,            # pot 높이(≈115mm) 절반 정도
+            "level_deg": 5.0,            # 수평 오차 허용
+        }
+
+
+        # 상태 브로드캐스트 (문자열)
+        self.cbirrt_status_pub = self.create_publisher(String, '/constraint_birrt/status', 10)
+
+    def _check_valid(self, q, name: str, constraints=None) -> bool:
+        """q가 조인트 리밋/충돌/경로제약을 모두 만족하는지 체크하고 로그 남김"""
+        try:
+            import numpy as np
+            from new_bimanual_pkg.constraint import is_state_valid
+            ok = is_state_valid(
+                q=np.asarray(q, float),
+                joint_names=self.joint_names,
+                lb=self.lb, ub=self.ub,
+                group_name=self.group_name,
+                timeout=2.0,
+                constraints=constraints
+            )
+        except Exception as e:
+            self.get_logger().warn(f"[validity] {name}: exception {e}")
+            return False
+
+        if ok:
+            self.get_logger().info(f"[validity] {name}: ✅ valid")
+        else:
+            self.get_logger().warn(f"[validity] {name}: ❌ invalid (limit/collision/constraints)")
+        return ok
 
     # ee frame의 quaternion 값 반환
     def fk_quat_at(self, q: np.ndarray, ee_frame: str):
@@ -270,7 +338,8 @@ class PathNode(Node):
     
     # TRAK IK 호출
     def compute_ik_via_moveit(self, group, frame_id, ik_link_name, pos, quat,
-                          seed_names, seed_values, timeout=0.2, attempts=8, avoid_collisions=False):
+                              seed_names, seed_values, timeout=0.2, attempts=8,
+                              avoid_collisions=False, wait_mode="spin"):
         
         # 서비스 대기
         if not self.ik_cli.wait_for_service(timeout_sec=5.0):
@@ -284,6 +353,8 @@ class PathNode(Node):
         # 시드는 리스트로 작업
         seed_names = list(seed_names)
         base_seed  = [float(v) for v in seed_values]
+
+        self.get_logger().info(f"[IK] group={group}, pos={pos}, quat={quat}")
 
         for k in range(max(1, int(attempts))):
             req = GetPositionIK.Request()
@@ -303,6 +374,8 @@ class PathNode(Node):
             ps.pose.orientation.w = qw
             req.ik_request.pose_stamped = ps
 
+            req.ik_request.timeout = Duration(sec=2)
+
             # 시드 (k>0일 때 약간 섞어서 재시도)
             if k == 0:
                 seed = base_seed
@@ -321,8 +394,17 @@ class PathNode(Node):
             )
 
             future = self.ik_cli.call_async(req)
-            rclpy.spin_until_future_complete(self, future)
+
+            if wait_mode == "spin":
+                # executor가 아직 스핀 전(예: __init__ 단계)에서 사용
+                rclpy.spin_until_future_complete(self, future)
+            else:
+                # 콜백/타이머 안에서 사용 (교착 방지)
+                while rclpy.ok() and not future.done():
+                    time.sleep(0.002)
+
             res = future.result()
+
             if res is None:
                 self.get_logger().error("IK service call failed (no response)")
                 return None
@@ -340,6 +422,59 @@ class PathNode(Node):
             time.sleep(0.01)
 
         return None
+    
+    def _ik_request_async(self, group, frame_id, ik_link_name, pos, quat,
+                        seed_names, seed_values, timeout=0.8, avoid_collisions=True):
+        req = GetPositionIK.Request()
+        req.ik_request.group_name = group
+        req.ik_request.ik_link_name = ik_link_name
+        req.ik_request.avoid_collisions = bool(avoid_collisions)
+
+        ps = PoseStamped()
+        ps.header.frame_id = frame_id
+        ps.header.stamp = self.get_clock().now().to_msg()
+        ps.pose.position.x, ps.pose.position.y, ps.pose.position.z = map(float, pos)
+        ps.pose.orientation.x, ps.pose.orientation.y, ps.pose.orientation.z, ps.pose.orientation.w = map(float, quat)
+        req.ik_request.pose_stamped = ps
+
+        # MoveIt의 IK 내부 타임아웃
+        req.ik_request.timeout = Duration(
+            sec=int(timeout),
+            nanosec=int((timeout - int(timeout)) * 1e9)
+        )
+
+        # 시드
+        js = JointState()
+        js.name = list(seed_names)
+        js.position = [float(v) for v in seed_values]
+        req.ik_request.robot_state.joint_state = js
+
+        # 바로 비동기 요청만 보내고, 여기서는 절대 기다리지 않음
+        return self.ik_cli.call_async(req)
+
+    
+    # 4) 양팔 IK (seed는 현재 자세)
+    def call_ik(self, group, ik_link_name, T: pin.SE3,
+                seed_names, seed_values,
+                timeout=0.8, attempts=15, avoid_collisions=True,
+                frame_id="world", wait_mode="spin"):
+        q = pin.Quaternion(T.rotation).coeffs()
+        return self.compute_ik_via_moveit(
+            group=group,
+            frame_id=frame_id,
+            ik_link_name=ik_link_name,
+            pos=T.translation.tolist(),
+            quat=[float(q[0]), float(q[1]), float(q[2]), float(q[3])],
+            seed_names=seed_names,
+            seed_values=seed_values,
+            timeout=timeout,
+            attempts=attempts,
+            avoid_collisions=avoid_collisions,
+            wait_mode=wait_mode
+        )
+
+
+
     
     # FK (joint space -> 3D point for current ee_frame_id)
     def q_to_point(self, q: np.ndarray) -> Point:
@@ -692,6 +827,8 @@ class PathNode(Node):
         if missing:
             # 아직 모든 조인트가 joint_states에 안 뜨면 다음 메시지에서 다시 시도
             return
+        
+        self._last_joint_state = [msg.position[msg.name.index(n)] for n in self.joint_names if n in msg.name]
 
         # tol 설정(라디안 / 라디안/초)
         pos_tol = 0.01    # 0.57° 정도
@@ -763,7 +900,7 @@ class PathNode(Node):
             self._grip_ramp_timer.cancel()
             self._grip_ramp_timer = None
             self.get_logger().info("Gripper ramp done.")
-
+            self._grasp_done = True  
 
     def start_gripper_ramp(self, goal: dict = None, T: float = 1.0, rate_hz: float = 50.0, start_from: dict = None):
         """
@@ -802,6 +939,457 @@ class PathNode(Node):
         self.get_logger().info(f"Gripper ramp start: T={self._grip_ramp_T:.2f}s @ {self._grip_ramp_rate:.0f}Hz")
 
 
+    def _after_grasp_loop(self):
+        if not self._grasp_done or self._did_rotate_place:
+            return
+        self._did_rotate_place = True
+        try:
+            self._after_grasp_timer.cancel()
+        except Exception:
+            pass
+
+        if getattr(self, "use_absolute_after_grasp_place", False):
+            self.get_logger().info(">>> Grasp done. Moving to absolute target (constrained BiRRT)...")
+            self._place_absolute_and_publish()
+        else:
+            self.get_logger().info(">>> Grasp done. Starting constrained rotate+place...")
+            self._rotate_then_place_and_publish()
+    
+    def _log_goal_pose(self, tag: str, T: pin.SE3):
+        p = T.translation
+        q = pin.Quaternion(T.rotation).coeffs()  # [x,y,z,w]
+        self.get_logger().info(
+            f"[Goal {tag}] pos={[float(p[0]), float(p[1]), float(p[2])]}, "
+            f"quat={[float(q[0]), float(q[1]), float(q[2]), float(q[3])]}"
+        )
+
+
+    def _place_absolute_and_publish(self):
+        # 0) 준비: 현재(q_start)에서 EE-EE 상대변환 저장
+        if hasattr(self, "_last_joint_state"):
+            q_start = np.array(self._last_joint_state, float)
+        else:
+            q_start = np.asarray(self.goal_q, float)
+
+        pin.forwardKinematics(self.model, self.data, q_start)
+        pin.updateFramePlacements(self.model, self.data)
+        fidL = self.model.getFrameId(self.ee_frame_l)
+        fidR = self.model.getFrameId(self.ee_frame_r)
+        TWL = self.data.oMf[fidL]   # world->left_ee
+        TWR = self.data.oMf[fidR]   # world->right_ee
+    
+        # 1) pot 목표 pose 구성 (after_grasp_target 기준)
+        cfg = self.after_grasp_target
+        px, py, pz = [float(v) for v in cfg["pos"]]
+        r_deg, p_deg, y_deg = cfg["rpy_deg"]
+        r, p, y = math.radians(r_deg), math.radians(p_deg), math.radians(y_deg)
+
+        # RPY -> rotation matrix
+        qx, qy, qz, qw = quat_from_rpy(r, p, y)
+        R_goal = pin.Quaternion(np.array([qx, qy, qz, qw])).toRotationMatrix()
+        T_pot_goal = pin.SE3(R_goal, np.array([px, py, pz], dtype=float))
+
+        # 회전 행렬 만들기 (pot을 손이 ±90° 돌려 잡도록)
+        R_target_l = pin.exp3(np.array([0, 0, 0])) 
+        R_target_r = pin.exp3(np.array([0, 0, 0])) 
+
+        # 목표 hand→pot 변환
+        T_l_in_pot = pin.SE3(R_target_l, np.array([0.0, 0.23, 0.115]))
+        T_r_in_pot = pin.SE3(R_target_r, np.array([0.0, -0.23, 0.115]))
+
+
+        R_err_l = TWL.rotation.T @ T_l_in_pot.rotation
+        R_err_r = TWR.rotation.T @ T_r_in_pot.rotation
+
+        print("Left rot error (deg):", pin.log3(R_err_l).T * 180/np.pi)
+        print("Right rot error (deg):", pin.log3(R_err_r).T * 180/np.pi)
+
+
+        # --- 왼팔 목표: after_grasp_target 그대로 ---
+        # ❗ 파지 직후 pot의 world pose (projector 만들 때 쓰던 값과 동일하게 맞추세요)
+        T_pot0 = pin.SE3(np.eye(3), np.array([0.5, 0.0, 1.0051]))
+
+        # 현재(파지 직후)의 world→EE, world→pot 로부터 'EE의 pot 기준 상대자세' 추정
+        T_l_in_pot_meas = T_pot0.inverse() * TWL   # left  EE pose in pot frame
+        T_r_in_pot_meas = T_pot0.inverse() * TWR   # right EE pose in pot frame
+
+        print("=== Using measured transforms for projector ===")
+        print("T_l_in_pot:", T_l_in_pot_meas)
+        print("T_r_in_pot:", T_r_in_pot_meas)
+
+        # 새 pot 목표에서의 EE 목표 = pot 목표 * (EE의 pot기준 상대자세)
+        TWL_goal = T_pot_goal * T_l_in_pot_meas
+        TWR_goal = T_pot_goal * T_r_in_pot_meas
+
+
+        self._log_goal_pose("left",  TWL_goal)
+        self._log_goal_pose("right", TWR_goal)
+
+        # 2) SE3 -> PoseStamped (제약 생성용)
+        def se3_to_ps(T: pin.SE3) -> PoseStamped:
+            ps = PoseStamped()
+            ps.header.frame_id = cfg.get("frame_id", "world")
+            ps.pose.position.x, ps.pose.position.y, ps.pose.position.z = T.translation.tolist()
+            q = pin.Quaternion(T.rotation).coeffs()  # [x,y,z,w]
+            ps.pose.orientation.x, ps.pose.orientation.y, ps.pose.orientation.z, ps.pose.orientation.w = map(float, q)
+            return ps
+
+        ps_left  = se3_to_ps(TWL_goal)
+        ps_right = se3_to_ps(TWR_goal)
+
+        # 3) 제약(양팔) 생성
+        cplanner = ConstraintBiRRT(
+            joint_names=self.joint_names, lb=self.lb, ub=self.ub,
+            group_name=self.group_name, state_dim=len(self.joint_names),
+            max_iter=4000,            # ↑ 2000 → 4000
+            step_size=0.01,           # ↑ 0.03 → 0.02 (더 촘촘)
+            edge_check_res=0.01,      # ↑ 0.05 → 0.03
+        )
+
+        # pot 초기 pose (world 좌표)
+        T_pot0 = pin.SE3(np.eye(3), np.array([0.5, 0.0, 1.0051]))
+        proj_spec = build_pot_grasp_projector(
+                self.model, self.data,
+                ee_frame_l="gripper_l_rh_p12_rn_base",
+                ee_frame_r="gripper_r_rh_p12_rn_base",
+                T_pot0=T_pot0,
+                T_l_in_pot=T_l_in_pot_meas,   # measured 값 사용
+                T_r_in_pot=T_r_in_pot_meas,
+                tol=1.0,         # 허용 오차 완화
+                max_iters=2000,    # 반복 횟수 늘림
+                damping=1e-3,
+            )
+
+        cplanner.set_projector(proj_spec)
+        self.get_logger().info("[CBiRRT] grasp projector set (pot handles).")
+
+        # MoveIt Constraints 만들기 (왼/오른)
+        cons_left = build_place_constraints(
+            ee_link=self.ee_frame_l, place_pose_world=ps_left,
+            eps_xy_mm=float(cfg.get("eps_xy_mm", 150.0)),
+            eps_z_mm=float(cfg.get("eps_z_mm", 150.0)),
+            level_deg=float(cfg.get("level_deg", 10.0)),
+        )
+        cons_right = build_place_constraints(
+            ee_link=self.ee_frame_r, place_pose_world=ps_right,
+            eps_xy_mm=float(cfg.get("eps_xy_mm", 150.0)),
+            eps_z_mm=float(cfg.get("eps_z_mm", 150.0)),
+            level_deg=float(cfg.get("level_deg", 10.0)),
+        )
+
+        # ▶ 병합 (반드시 moveit_msgs.msg.Constraints 타입이어야 함)
+        from moveit_msgs.msg import Constraints
+        combined = Constraints()
+        combined.name = "bimanual_place"
+        combined.joint_constraints.extend(cons_left.joint_constraints)
+        combined.joint_constraints.extend(cons_right.joint_constraints)
+        combined.position_constraints.extend(cons_left.position_constraints)
+        combined.position_constraints.extend(cons_right.position_constraints)
+        combined.orientation_constraints.extend(cons_left.orientation_constraints)
+        combined.orientation_constraints.extend(cons_right.orientation_constraints)
+        combined.visibility_constraints.extend(cons_left.visibility_constraints)
+        combined.visibility_constraints.extend(cons_right.visibility_constraints)
+
+        cplanner.set_constraints(combined)
+        self.get_logger().info("[CBiRRT] constraints set (merged MoveIt Constraints).")
+
+        # --- IK 시드 준비 (현재 자세 q_start에서 좌/우팔 시드 분리) ---
+        nL = len(self.left_names); nR = len(self.right_names)
+        if q_start.shape[0] < (nL + nR):
+            q_pad = np.zeros(nL + nR, dtype=float); q_pad[:q_start.shape[0]] = q_start
+            q_start = q_pad
+        seed_left  = [float(q) for q in q_start[:nL]]
+        seed_right = [float(q) for q in q_start[nL:nL+nR]]
+
+        # ▶ 콜백에서 쓸 컨텍스트에 'constraints'도 꼭 넣기!
+        self._abs_place_ctx = {
+            "cplanner": cplanner,
+            "constraints": combined,          # ★ 추가
+            "q_start": q_start,
+            "TWL_goal": TWL_goal,
+            "TWR_goal": TWR_goal,
+            "seed_left": seed_left,
+            "seed_right": seed_right,
+            "frame_id": cfg.get("frame_id","world"),
+            "cfg": cfg,
+        }
+
+        # 왼팔 IK 비동기 시작
+        self.get_logger().info("[CBiRRT] calling IK (left) ASYNC...")
+        qL = pin.Quaternion(TWL_goal.rotation).coeffs()
+        futL = self._ik_request_async(
+            group="left_arm",
+            frame_id=self._abs_place_ctx["frame_id"],
+            ik_link_name=self.ee_frame_l,
+            pos=TWL_goal.translation.tolist(),
+            quat=[float(qL[0]), float(qL[1]), float(qL[2]), float(qL[3])],
+            seed_names=self.left_names,
+            seed_values=seed_left,
+            timeout=0.8,
+            avoid_collisions=True,
+        )
+
+        # 현재 손의 pot frame에서 상대자세
+        print("T_l_in_pot_meas:", T_l_in_pot_meas)
+        print("T_r_in_pot_meas:", T_r_in_pot_meas)
+
+        # 내가 정의한 목표랑 비교
+        print("Target T_l_in_pot:", T_l_in_pot)
+        print("Target T_r_in_pot:", T_r_in_pot)
+
+
+        futL.add_done_callback(self._on_left_ik_done)
+        return
+
+    def _cbirrt_report(self, stage: str, **payload):
+        """
+        stage: 'start' | 'success' | 'fail'
+        payload: 자유롭게 추가 (path_len, ms, reason 등)
+        """
+        msg = {
+            "stage": stage,
+            "ts": self.get_clock().now().nanoseconds,  # ns
+            **payload
+        }
+        # 콘솔
+        if stage == 'start':
+            self.get_logger().info(f"[CBiRRT] start: {payload.get('what','')}")
+        elif stage == 'success':
+            self.get_logger().info(
+                f"[CBiRRT] success: path_len={payload.get('path_len','?')}, "
+                f"solve_ms={payload.get('solve_ms','?')}, note={payload.get('what','')}"
+            )
+        else:
+            self.get_logger().warn(
+                f"[CBiRRT] FAIL: reason={payload.get('reason','?')}, "
+                f"solve_ms={payload.get('solve_ms','?')}, note={payload.get('what','')}"
+            )
+
+        # 토픽
+        s = String()
+        s.data = json.dumps(msg, ensure_ascii=False)
+        self.cbirrt_status_pub.publish(s)
+
+    def _on_left_ik_done(self, future):
+        try:
+            res = future.result()
+        except Exception as e:
+            self.get_logger().error(f"[CBiRRT] left IK future error: {e}")
+            return
+
+        if res is None:
+            self.get_logger().error("[CBiRRT] left IK: no response")
+            return
+        if res.error_code.val != res.error_code.SUCCESS:
+            self.get_logger().warn(f"[CBiRRT] left IK failed (code={res.error_code.val})")
+            return
+
+        names = list(res.solution.joint_state.name)
+        vals  = list(res.solution.joint_state.position)
+        self._abs_place_ctx["ik_l"] = dict(zip(names, vals))
+
+        # 오른팔 IK 비동기 요청
+        self.get_logger().info("[CBiRRT] calling IK (right) ASYNC...")
+        TWR_goal = self._abs_place_ctx["TWR_goal"]
+        qR = pin.Quaternion(TWR_goal.rotation).coeffs()
+        futR = self._ik_request_async(
+            group="right_arm",
+            frame_id=self._abs_place_ctx["frame_id"],
+            ik_link_name=self.ee_frame_r,
+            pos=TWR_goal.translation.tolist(),
+            quat=[float(qR[0]), float(qR[1]), float(qR[2]), float(qR[3])],
+            seed_names=self.right_names,
+            seed_values=self._abs_place_ctx["seed_right"],
+            timeout=0.8,
+            avoid_collisions=True,
+        )
+        futR.add_done_callback(self._on_right_ik_done)
+
+    def _on_right_ik_done(self, future):
+        try:
+            res = future.result()
+        except Exception as e:
+            self.get_logger().error(f"[CBiRRT] right IK future error: {e}")
+            return
+
+        if res is None:
+            self.get_logger().error("[CBiRRT] right IK: no response")
+            return
+        if res.error_code.val != res.error_code.SUCCESS:
+            self.get_logger().warn(f"[CBiRRT] right IK failed (code={res.error_code.val})")
+            return
+
+        names = list(res.solution.joint_state.name)
+        vals  = list(res.solution.joint_state.position)
+        ik_r  = dict(zip(names, vals))
+
+        # 컨텍스트 꺼내기
+        ctx = getattr(self, "_abs_place_ctx", None)
+        if not ctx or "ik_l" not in ctx:
+            self.get_logger().error("[CBiRRT] missing context or left IK result")
+            return
+
+        ik_l       = ctx["ik_l"]
+        q_start    = ctx["q_start"]
+        cplanner   = ctx["cplanner"]
+        cfg        = ctx["cfg"]
+        constraints = ctx.get("constraints", None)   # ★ 병합된 MoveIt Constraints
+
+        # q_goal 구성 (왼/오른팔 순서 주의)
+        q_goal = q_start.copy()
+        for i, nm in enumerate(self.left_names):
+            if nm not in ik_l:
+                self.get_logger().warn(f"[CBiRRT] left IK result missing joint {nm}")
+                return
+            q_goal[i] = float(ik_l[nm])
+        for i, nm in enumerate(self.right_names):
+            if nm not in ik_r:
+                self.get_logger().warn(f"[CBiRRT] right IK result missing joint {nm}")
+                return
+            q_goal[7+i] = float(ik_r[nm])
+
+        # ---- 계획 전에 유효성 체크 (조인트리밋/충돌/제약) ----
+        if not self._check_valid(q_start, "q_start", constraints=None):
+            self.get_logger().warn("[CBiRRT] start state invalid (collision/limits). Abort.")
+            return
+
+        # goal은 제약 포함해서 검사 (그대로 유지)
+        if not self._check_valid(q_goal, "q_goal", constraints=constraints):
+            self.get_logger().warn("[CBiRRT] goal state invalid under constraints. Abort.")
+            return
+        
+        # 계획 실행
+        cplanner.set_start(q_start)
+        cplanner.set_goal(q_goal)
+        self._cbirrt_report('start', what='abs_place(bimanual)',
+                            target_pos=cfg["pos"], target_rpy_deg=cfg["rpy_deg"])
+        t0 = time.time()
+        ok, path = cplanner.solve(max_time=12.0)
+        dt_ms = int((time.time() - t0)*1000)
+        if not ok or path is None:
+            self._cbirrt_report('fail', what='abs_place', reason='solve_failed', solve_ms=dt_ms)
+            self.get_logger().warn("Absolute place planning failed.")
+            return
+
+        path = np.asarray(path)
+        self._cbirrt_report('success', what='abs_place', path_len=len(path), solve_ms=dt_ms)
+
+        # === 이하 그대로: 트젝 생성/퍼블리시 ===
+        dof_each = 7
+        Q_L = path[:, :dof_each]
+        Q_R = path[:, dof_each:2*dof_each]
+
+        qd_max_L  = np.array([1.5]*dof_each); qdd_max_L = np.array([3.0]*dof_each)
+        qd_max_R  = np.array([1.5]*dof_each); qdd_max_R = np.array([3.0]*dof_each)
+
+        outL = plan_trajectory(
+            Q_L, qd_max_L, qdd_max_L,
+            ds=0.005, sdot_start=0.0, stop_window_s=0.05, alpha_floor=1.5,
+            v_min_time=1e-4, sample_hz=10.0, max_points=100000
+        )
+        outR = plan_trajectory(
+            Q_R, qd_max_R, qdd_max_R,
+            ds=0.005, sdot_start=0.0, stop_window_s=0.05, alpha_floor=1.5,
+            v_min_time=1e-4, sample_hz=10.0, max_points=100000
+        )
+
+        trajL = make_joint_trajectory_msg(
+            joint_names=self.left_names,
+            t0=0.0,
+            t_samples=(outL["t_samples"] - outL["t_samples"][0]),
+            Q_samples=outL["Q_samples"],
+            Qd_samples=outL["Qd_samples"],
+        )
+        trajR = make_joint_trajectory_msg(
+            joint_names=self.right_names,
+            t0=0.0,
+            t_samples=(outR["t_samples"] - outR["t_samples"][0]),
+            Q_samples=outR["Q_samples"],
+            Qd_samples=outR["Qd_samples"],
+        )
+
+        now = self.get_clock().now().to_msg()
+        if trajL is not None:
+            trajL.header.frame_id = 'world'; trajL.header.stamp = now
+            self.traj_pub_left.publish(trajL)
+        if trajR is not None:
+            trajR.header.frame_id = 'world'; trajR.header.stamp = now
+            self.traj_pub_right.publish(trajR)
+
+        goal_map = {}
+        if trajL and len(trajL.points) > 0:
+            for nm, q in zip(self.left_names, trajL.points[-1].positions):
+                goal_map[nm] = float(q)
+        if trajR and len(trajR.points) > 0:
+            for nm, q in zip(self.right_names, trajR.points[-1].positions):
+                goal_map[nm] = float(q)
+        self._arm_goal = goal_map
+        self._awaiting_arrival = True
+        self._arrive_count = 0
+        self.get_logger().info(f'[abs-place] Arrival monitoring ON for {len(goal_map)} joints.')
+
+        # 동기화 트젝(100Hz)
+        controller_hz = 100.0
+        dt = 1.0/controller_hz
+        splineL = build_spline(outL["t_knots"], Q_L, outL["qdot_knots"])
+        splineR = build_spline(outR["t_knots"], Q_R, outR["qdot_knots"])
+        T_L = float(outL["t_samples"][-1] - outL["t_samples"][0])
+        T_R = float(outR["t_samples"][-1] - outR["t_samples"][0])
+        T = max(T_L, T_R)
+        t_common = np.arange(0.0, T + 0.5*dt, dt)
+
+        QL_sync, QLd_sync, QR_sync, QRd_sync = [], [], [], []
+        for t in t_common:
+            qL, qLd = clamp_eval(splineL, outL["t_samples"][0] + t)
+            qR, qRd = clamp_eval(splineR, outR["t_samples"][0] + t)
+            QL_sync.append(qL); QLd_sync.append(qLd)
+            QR_sync.append(qR); QRd_sync.append(qRd)
+        QL_sync  = np.vstack(QL_sync);  QLd_sync = np.vstack(QLd_sync)
+        QR_sync  = np.vstack(QR_sync);  QRd_sync = np.vstack(QRd_sync)
+        Q_sync  = np.hstack([QL_sync, QR_sync])
+        Qd_sync = np.hstack([QLd_sync, QRd_sync])
+
+        traj_all = make_joint_trajectory_msg(
+            joint_names=(self.left_names + self.right_names),
+            t0=0.0,
+            t_samples=t_common,
+            Q_samples=Q_sync,
+            Qd_samples=Qd_sync
+        )
+        if traj_all is not None:
+            traj_all.header.frame_id = 'world'
+            traj_all.header.stamp = self.get_clock().now().to_msg()
+            self.traj_pub.publish(traj_all)
+
+        # (선택) 시각화와 그리퍼 오픈 타이머 – 기존 유지
+        try:
+            full_points = [self.q_to_point(q) for q in path]
+            if len(full_points) >= 2:
+                self.marker_pub.publish(self.make_polyline_marker(full_points, 200, 'birrt_path_abs_place', 'b', 0.01))
+                path_msg = Path()
+                path_msg.header.frame_id = 'world'
+                path_msg.header.stamp = self.get_clock().now().to_msg()
+                path_msg.poses = [self.q_to_posestamped(q) for q in path]
+                self.path_pub_full.publish(path_msg)
+        except Exception as e:
+            self.get_logger().warn(f"viz skipped: {e}")
+
+        def _open_once():
+            msg = JointState()
+            msg.name = [
+                'gripper_r_joint1','gripper_r_joint2','gripper_r_joint3','gripper_r_joint4',
+                'gripper_l_joint1','gripper_l_joint2','gripper_l_joint3','gripper_l_joint4'
+            ]
+            msg.position = [0.0]*8
+            msg.header.stamp = self.get_clock().now().to_msg()
+            self.desired_pub.publish(msg)
+            self.get_logger().info("Gripper opened after absolute place.")
+            timer.cancel()
+        timer = self.create_timer(2.0, _open_once)
+
+
+
+
 
 
 
@@ -809,14 +1397,13 @@ def main():
     rclpy.init()
     node = PathNode()
     try:
-        rclpy.spin(node)
+        from rclpy.executors import MultiThreadedExecutor
+        executor = MultiThreadedExecutor(num_threads=2)
+        executor.add_node(node)
+        executor.spin()
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
-
-if __name__ == '__main__':
-    main()
 
 
                 

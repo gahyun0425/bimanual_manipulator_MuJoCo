@@ -48,6 +48,9 @@ setup(
             'path_node = new_bimanual_pkg.path_node:main',
             'basic_node = new_bimanual_pkg.basic_spawn_node:main',
             'trajectory = new_bimanual_pkg.trajectory:main',
+            'constraint = new_bimanual_pkg.constraint:main',
+            'constraint_birrt = new_bimanual_pkg.constraint_birrt:main',
+            'min_fk_node = new_bimanual_pkg.min_fk_node:main',
         ],
     },
 )

@@ -4,7 +4,7 @@
 import numpy as np
 import time
 
-from new_bimanual_pkg.collision_detection import is_state_vaild
+from new_bimanual_pkg.collision_detection import is_state_valid
 from new_bimanual_pkg.linear_interpolation import linear_edge_samples
 
 class BiRRT:
@@ -45,8 +45,8 @@ class BiRRT:
         self.goal_tree = self._new_tree(q_goal)
 
     # collision detectioin
-    def is_vaild(self, q: np.ndarray) -> bool:
-        return is_state_vaild(q, self.joint_names, self.lb, self.ub, self.group_name) 
+    def is_valid(self, q: np.ndarray) -> bool:
+        return is_state_valid(q, self.joint_names, self.lb, self.ub, self.group_name) 
     
     def sample_random_config(self) -> np.ndarray:
         return np.random.uniform(self.lb, self.ub, size=self.state_dim)
@@ -64,12 +64,12 @@ class BiRRT:
         return q_from + d * (step / L) # 한 스텝 전진한 점
     
     #edge linear interpolation 진행 및 edge 샘플링
-    def edge_is_vaild(self, qa: np.ndarray, qb: np.ndarray) -> bool:
+    def edge_is_valid(self, qa: np.ndarray, qb: np.ndarray) -> bool:
         if np.linalg.norm(qb - qa) == 0.0:
-            return self.is_vaild(qb)
+            return self.is_valid(qb)
 
         for qi in linear_edge_samples(qa, qb, self.edge_check_res):
-            if not self.is_vaild(qi):
+            if not self.is_valid(qi):
                 return False
         return True
     
@@ -96,7 +96,7 @@ class BiRRT:
         i_near = self.nearest_idx(tree, q_target)
         q_near = tree[i_near]['q']
         q_new  = self.steer(q_near, q_target)
-        if not self.edge_is_vaild(q_near, q_new):
+        if not self.edge_is_valid(q_near, q_new):
             return None
         return self.add_node(tree, q_new, i_near)
 
@@ -109,12 +109,12 @@ class BiRRT:
         parent   = i_near_b
         while True:
             q_next = self.steer(q_curr, q_target)
-            if not self.edge_is_vaild(q_curr, q_next):
+            if not self.edge_is_valid(q_curr, q_next):
                 return None, None  # 더 못감 (충돌)
             parent = self.add_node(tree_b, q_next, parent)
             q_curr = q_next
             if np.linalg.norm(q_curr - q_target) <= self.step_size:
-                if self.edge_is_vaild(q_curr, q_target):
+                if self.edge_is_valid(q_curr, q_target):
                     return idx_new_in_a, parent  # 연결 성공
 
 
@@ -128,7 +128,7 @@ class BiRRT:
                 break
 
             q_rand = self.sample_random_config()
-            if not self.is_vaild(q_rand):
+            if not self.is_valid(q_rand):
                 continue
 
             # A 트리 확장
