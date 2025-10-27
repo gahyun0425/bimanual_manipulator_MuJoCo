@@ -21,67 +21,67 @@
   <link name="table_link">
     <!-- 상판: full 0.50 x 0.50 x 0.05, center @ (0.5, 0, 0.975) -->
     <visual>
-      <origin xyz="0.5 0 0.975" rpy="0 0 0"/>
-      <geometry><box size="0.50 0.50 0.05"/></geometry>
+      <origin xyz="0.5 0 0.98" rpy="0 0 0"/>
+      <geometry><box size="0.52 0.52 0.05"/></geometry>
       <material name="table_top_mat"><color rgba="0.8 0.5 0.3 1"/></material>
     </visual>
     <collision>
-      <origin xyz="0.5 0 0.975" rpy="0 0 0"/>
-      <geometry><box size="0.50 0.50 0.05"/></geometry>
+      <origin xyz="0.5 0 0.98" rpy="0 0 0"/>
+      <geometry><box size="0.52 0.52 0.05"/></geometry>
     </collision>
 
     <!-- 다리들: 단면 0.05 x 0.05, 높이 0.95 → center z = 0.475 -->
     <!-- leg1 @ (0.725, 0.225, 0.475) -->
     <visual>
       <origin xyz="0.725 0.225 0.475" rpy="0 0 0"/>
-      <geometry><box size="0.05 0.05 0.95"/></geometry>
+      <geometry><box size="0.07 0.07 1.0"/></geometry>
       <material name="table_leg_mat"><color rgba="0.6 0.6 0.6 1"/></material>
     </visual>
     <collision>
       <origin xyz="0.725 0.225 0.475" rpy="0 0 0"/>
-      <geometry><box size="0.05 0.05 0.95"/></geometry>
+      <geometry><box size="0.07 0.07 1.0"/></geometry>
     </collision>
 
     <!-- leg2 @ (0.275, 0.225, 0.475) -->
     <visual>
       <origin xyz="0.275 0.225 0.475" rpy="0 0 0"/>
-      <geometry><box size="0.05 0.05 0.95"/></geometry>
+      <geometry><box size="0.07 0.07 1.0"/></geometry>
       <material name="table_leg_mat2"><color rgba="0.6 0.6 0.6 1"/></material>
     </visual>
     <collision>
       <origin xyz="0.275 0.225 0.475" rpy="0 0 0"/>
-      <geometry><box size="0.05 0.05 0.95"/></geometry>
+      <geometry><box size="0.07 0.07 1.0"/></geometry>
     </collision>
 
     <!-- leg3 @ (0.725, -0.225, 0.475) -->
     <visual>
       <origin xyz="0.725 -0.225 0.475" rpy="0 0 0"/>
-      <geometry><box size="0.05 0.05 0.95"/></geometry>
+      <geometry><box size="0.07 0.07 1.0"/></geometry>
       <material name="table_leg_mat3"><color rgba="0.6 0.6 0.6 1"/></material>
     </visual>
     <collision>
       <origin xyz="0.725 -0.225 0.475" rpy="0 0 0"/>
-      <geometry><box size="0.05 0.05 0.95"/></geometry>
+      <geometry><box size="0.07 0.07 1.0"/></geometry>
     </collision>
 
     <!-- leg4 @ (0.275, -0.225, 0.475) -->
     <visual>
       <origin xyz="0.275 -0.225 0.475" rpy="0 0 0"/>
-      <geometry><box size="0.05 0.05 0.95"/></geometry>
+      <geometry><box size="0.07 0.07 1.0"/></geometry>
       <material name="table_leg_mat4"><color rgba="0.6 0.6 0.6 1"/></material>
     </visual>
     <collision>
       <origin xyz="0.275 -0.225 0.475" rpy="0 0 0"/>
-      <geometry><box size="0.05 0.05 0.95"/></geometry>
+      <geometry><box size="0.07 0.07 1.0"/></geometry>
     </collision>
   </link>
   <!-- ========= end table ========= -->
 
 
-  <!-- <joint name="pot_free_joint" type="floating">
+  <joint name="pot_free_joint" type="floating">
     <parent link="world"/>
     <child link="pot_link"/>
-    <origin rpy="0 0 0" xyz="0.5 0.0 1.0051"/>
+    <origin rpy="0 0 0" xyz="0.5 0.0 1.01"/>
   </joint>
 
   <link name="pot_link">
@@ -100,10 +100,10 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry><box size="0.16 0.16 0.01"/></geometry>
-    </collision> -->
+    </collision>
 
     <!-- front wall (height 0.10) -->
-    <!-- <visual>
+    <visual>
       <origin xyz="0 0.075 0.05" rpy="0 0 0"/>
       <geometry><box size="0.16 0.01 0.10"/></geometry>
       <material name="pot_wall_mat"><color rgba="0.25 0.35 0.45 1"/></material>
@@ -111,10 +111,10 @@
     <collision>
       <origin xyz="0 0.075 0.05" rpy="0 0 0"/>
       <geometry><box size="0.16 0.01 0.10"/></geometry>
-    </collision> -->
+    </collision>
 
     <!-- back wall (height 0.10) -->
-    <!-- <visual>
+    <visual>
       <origin xyz="0 -0.075 0.05" rpy="0 0 0"/>
       <geometry><box size="0.16 0.01 0.10"/></geometry>
       <material name="pot_wall_mat_b"><color rgba="0.25 0.35 0.45 1"/></material>
@@ -122,10 +122,10 @@
     <collision>
       <origin xyz="0 -0.075 0.05" rpy="0 0 0"/>
       <geometry><box size="0.16 0.01 0.10"/></geometry>
-    </collision> -->
+    </collision>
 
     <!-- left wall (height 0.10) -->
-    <!-- <visual>
+    <visual>
       <origin xyz="-0.075 0 0.05" rpy="0 0 0"/>
       <geometry><box size="0.01 0.16 0.10"/></geometry>
       <material name="pot_wall_mat_l"><color rgba="0.25 0.35 0.45 1"/></material>
@@ -133,10 +133,10 @@
     <collision>
       <origin xyz="-0.075 0 0.05" rpy="0 0 0"/>
       <geometry><box size="0.01 0.16 0.10"/></geometry>
-    </collision> -->
+    </collision>
 
     <!-- right wall (height 0.10) -->
-    <!-- <visual>
+    <visual>
       <origin xyz="0.075 0 0.05" rpy="0 0 0"/>
       <geometry><box size="0.01 0.16 0.10"/></geometry>
       <material name="pot_wall_mat_r"><color rgba="0.25 0.35 0.45 1"/></material>
@@ -144,7 +144,7 @@
     <collision>
       <origin xyz="0.075 0 0.05" rpy="0 0 0"/>
       <geometry><box size="0.01 0.16 0.10"/></geometry>
-    </collision> -->
+    </collision>
 
     <!-- handles (left) bars at z=0.07 -->
     <!-- <visual>
@@ -207,15 +207,15 @@
     <collision>
       <origin xyz="0.0 -0.112 0.07" rpy="0 0 0"/>
       <geometry><box size="0.07 0.01 0.01"/></geometry>
-    </collision>-->
-  <!-- </link> -->
+    </collision> -->
+  </link>
 
 
   <link name="base_link">
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/base_mobile_assy.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/base_mobile_assy.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver">
         <color rgba="0.75 0.75 0.75 1"/>
@@ -224,7 +224,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/base_mobile_assy.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/base_mobile_assy.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -237,7 +237,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/lift_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/lift_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver">
         <color rgba="0.75 0.75 0.75 1"/>
@@ -246,7 +246,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/lift_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/lift_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -278,7 +278,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/body_arm_assy.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/body_arm_assy.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="white">
         <color rgba="1 1 1 1"/>
@@ -287,7 +287,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/body_arm_assy.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/body_arm_assy.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -308,7 +308,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/head_link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/head_link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -317,7 +317,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/head_link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/head_link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -338,7 +338,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/head_link2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/head_link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="white">
         <color rgba="1 1 1 1"/>
@@ -347,7 +347,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/head_link2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/head_link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -368,7 +368,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -377,7 +377,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -398,7 +398,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -407,7 +407,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -428,7 +428,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link3.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link3.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -437,7 +437,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link3.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link3.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -458,7 +458,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link4.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link4.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -467,7 +467,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link4.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link4.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -488,7 +488,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link5.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -497,7 +497,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link5.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -518,7 +518,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link6.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link6.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -527,7 +527,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link6.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link6.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -548,7 +548,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link7.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link7.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -557,7 +557,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link7.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_l_link7.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -612,7 +612,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -621,7 +621,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -642,7 +642,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -651,7 +651,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -672,7 +672,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link3.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link3.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -681,7 +681,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link3.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link3.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -702,7 +702,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link4.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link4.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -711,7 +711,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link4.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link4.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -732,7 +732,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link5.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -741,7 +741,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link5.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link5.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -762,7 +762,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link6.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link6.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -771,7 +771,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link6.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link6.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -792,7 +792,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link7.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link7.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="black">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -801,7 +801,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link7.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/arm_r_link7.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -854,13 +854,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/base.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/base.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/base.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/base.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -886,13 +886,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/r1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/r1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/r1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/r1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -919,13 +919,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/r2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/r2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/r2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/r2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -952,13 +952,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/l1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/l1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/l1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/l1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -985,13 +985,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/l2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/l2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/l2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/l2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -1013,13 +1013,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/base.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/base.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/base.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/base.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -1045,13 +1045,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/r1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/r1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/r1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/r1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -1078,13 +1078,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/r2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/r2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/r2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/r2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -1111,13 +1111,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/l1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/l1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/l1.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/l1.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -1144,13 +1144,13 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/l2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/l2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/l2.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/l2.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="grey">
         <color rgba="0.2 0.2 0.2 1"/>
@@ -1173,7 +1173,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/left_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/left_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver">
         <color rgba="0.75 0.75 0.75 1"/>
@@ -1182,7 +1182,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/left_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/left_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -1202,7 +1202,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/left_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/left_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver">
         <color rgba="0.75 0.75 0.75 1"/>
@@ -1211,7 +1211,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/left_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/left_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -1231,7 +1231,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/right_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/right_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver">
         <color rgba="0.75 0.75 0.75 1"/>
@@ -1240,7 +1240,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/right_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/right_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -1260,7 +1260,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/right_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/right_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver">
         <color rgba="0.75 0.75 0.75 1"/>
@@ -1269,7 +1269,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/right_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/right_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -1289,7 +1289,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/rear_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/rear_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver">
         <color rgba="0.75 0.75 0.75 1"/>
@@ -1298,7 +1298,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/rear_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/rear_wheel_steer_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -1318,7 +1318,7 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/rear_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/rear_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="silver">
         <color rgba="0.75 0.75 0.75 1"/>
@@ -1327,7 +1327,7 @@
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://bimanual_pkg/mujoco_models/assets/ffw_bg2/rear_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://new_bimanual_pkg/mujoco_models/assets/ffw_bg2/rear_wheel_drive_link.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>

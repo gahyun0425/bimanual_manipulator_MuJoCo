@@ -23,6 +23,8 @@ from new_bimanual_pkg.constraint_birrt import ConstraintBiRRT
 from new_bimanual_pkg.trajectory import plan_trajectory, build_spline, make_joint_trajectory_msg, clamp_eval
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy, QoSHistoryPolicy
 
+from new_bimanual_pkg.path_simplify import simplify_path, make_is_valid_from_node
+
 # --- constraints & constrained BiRRT helpers ---
 from new_bimanual_pkg.constraint import (
     build_rotation_constraints,
@@ -395,10 +397,39 @@ class PathNode(Node):
             return False
 
         if ok:
-            self.get_logger().info(f"[validity] {name}: ✅ valid")
+            # 너무 자주 찍혀서 rosout 퍼블리셔 경합을 유발하므로 끈다
+            # self.get_logger().info(f"[validity] {name}: ✅ valid")
+            pass
         else:
+            # 실패만 가끔 보이도록 유지하거나 이것도 끄고 싶으면 주석
             self.get_logger().warn(f"[validity] {name}: ❌ invalid (limit/collision/constraints)")
         return ok
+    
+    def make_quiet_is_valid(self):
+        """
+        path simplification에서 쓸 '로그 안 찍는' 유효성 검사 콜백.
+        _check_valid처럼 로그를 남기지 않아 rosout 퍼블리셔 중복 경고를 막는다.
+        """
+        from new_bimanual_pkg.constraint import is_state_valid
+        jn = self.joint_names
+        lb = self.lb; ub = self.ub
+        grp = self.group_name
+
+        def _quiet(q, constraints=None) -> bool:
+            try:
+                return bool(is_state_valid(
+                    q=np.asarray(q, float),
+                    joint_names=jn,
+                    lb=lb, ub=ub,
+                    group_name=grp,
+                    timeout=0.1,      # 간소화용은 짧게
+                    constraints=constraints
+                ))
+            except Exception:
+                # 여기서 경고도 남기지 말자 (간소화 루프는 호출이 매우 많음)
+                return False
+        return _quiet
+
 
     # ee frame의 quaternion 값 반환
     def fk_quat_at(self, q: np.ndarray, ee_frame: str):
@@ -663,6 +694,21 @@ class PathNode(Node):
         if not ok or full is None:
             self.get_logger().warning('Failed to find path.')
             return
+        
+        # --- Path simplification (조용한 유효성 검사 사용) ---
+        is_valid_quiet = make_is_valid_from_node(self)  # self = PathNode
+        full = simplify_path(
+            full,
+            is_valid_quiet,
+            constraints=None,
+            max_step=0.03,
+            red_passes=1,
+            shortcut_attempts=200,
+            smooth_iters=0
+        )
+
+
+
 
         # ---------- 여기부터 추가 (기존 self.publish_joint_trajectory(...) 삭제/대체) ----------
         # full shape: (N, 14)  ← N: 웨이포인트 수
