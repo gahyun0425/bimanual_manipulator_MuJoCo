@@ -111,84 +111,91 @@
 
     <body name="object" pos="0.5 0.0 1.0051">
       <freejoint/>
-      <inertial mass="30.0" diaginertia="0.09 0.06 0.09" pos="0 0 0"/>
 
-      <!-- 바닥 -->
+      <!-- 바닥: 질량 0 (충돌/시각만) -->
       <geom name="pot_bottom" type="box"
-            size="0.08 0.08 0.0025"
+            size="0.08 0.08 0.001"
             pos="0 0 0"
-            rgba="0.2 0.2 0.25 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001"/>
+            mass="0"
+            rgba="0.2 0.2 0.25 1"/>
 
-      <!-- 앞/뒤 벽 -->
+      <!-- 앞/뒤 벽: 실제 질량 부여 (density 또는 mass 중 하나 사용) -->
       <geom name="pot_wall_front" type="box"
             size="0.08 0.005 0.055"
             pos="0 0.075 0.055"
-            rgba="0.25 0.35 0.45 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1500"
+            rgba="0.25 0.35 0.45 1"/>
       <geom name="pot_wall_back" type="box"
             size="0.08 0.005 0.055"
             pos="0 -0.075 0.055"
-            rgba="0.25 0.35 0.45 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1500"
+            rgba="0.25 0.35 0.45 1"/>
 
       <!-- 좌/우 벽 -->
       <geom name="pot_wall_left" type="box"
             size="0.005 0.08 0.055"
             pos="-0.075 0 0.055"
-            rgba="0.25 0.35 0.45 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1500"
+            rgba="0.25 0.35 0.45 1"/>
       <geom name="pot_wall_right" type="box"
             size="0.005 0.08 0.055"
             pos="0.075 0 0.055"
-            rgba="0.25 0.35 0.45 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1500"
+            rgba="0.25 0.35 0.45 1"/>
 
       <!-- 손잡이(좌) -->
       <geom name="left_handle_bar" type="box"
             pos="-0.03  0.0925 0.105"
             size="0.01 0.015 0.01"
-            rgba="0.3 0.55 0.7 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1200"
+            rgba="0.3 0.55 0.7 1"/>
       <geom name="left_handle_bar_2" type="box"
             pos=" 0.03  0.0925 0.105"
             size="0.01 0.015 0.01"
-            rgba="0.3 0.55 0.7 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1200"
+            rgba="0.3 0.55 0.7 1"/>
       <geom name="left_handle_bar_3" type="box"
             pos=" 0.0   0.112  0.105"
             size="0.035 0.01 0.01"
-            rgba="0.3 0.55 0.7 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1200"
+            rgba="0.3 0.55 0.7 1"/>
 
       <!-- 손잡이(우) -->
       <geom name="right_handle_bar" type="box"
             pos="-0.03 -0.0925 0.105"
             size="0.01 0.015 0.01"
-            rgba="0.3 0.55 0.7 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1200"
+            rgba="0.3 0.55 0.7 1"/>
       <geom name="right_handle_bar_2" type="box"
             pos=" 0.03 -0.0925 0.105"
             size="0.01 0.015 0.01"
-            rgba="0.3 0.55 0.7 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1200"
+            rgba="0.3 0.55 0.7 1"/>
       <geom name="right_handle_bar_3" type="box"
             pos=" 0.0  -0.112  0.105"
             size="0.035 0.01 0.01"
-            rgba="0.3 0.55 0.7 1"
-            friction="5.0 0.05 0.0001"
-            solref="0.002 1" solimp="0.95 0.99 0.001" />
+            density="1200"
+            rgba="0.3 0.55 0.7 1"/>
 
+      <!-- ★ 안정성 보강용: 투명 받침(접촉 패치 확대, 질량 0) -->
+      <!-- 옆으로 세웠을 때 바닥이 되는 가장자리 근처에 아주 얇게 배치 -->
+      <geom name="stability_foot" type="box"
+            pos="0.078 0 0.003"    
+            size="0.003 0.08 0.001" 
+            mass="0"
+            rgba="0 0 0 0"
+            friction="5.0 0.40 0.20"
+            condim="6"/>
+
+      <!-- (선택) COM을 더 옆으로 미세 이동시키는 투명 카운터웨이트 -->
+      <!-- 필요시 주석 해제해서 사용: COM 투영을 접촉 패치 안으로 더 밀어넣음 -->
+      <!--
+      <geom name="counter" type="sphere"
+            pos="0.07 0 0.06"
+            size="0.01"
+            density="8000"
+            rgba="0 0 0 0"/>
+      -->
     </body>
 
 
