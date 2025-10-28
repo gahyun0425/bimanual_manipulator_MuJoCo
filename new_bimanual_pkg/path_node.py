@@ -23,7 +23,7 @@ from new_bimanual_pkg.constraint_birrt import ConstraintBiRRT
 from new_bimanual_pkg.trajectory import plan_trajectory, build_spline, make_joint_trajectory_msg, clamp_eval
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy, QoSHistoryPolicy
 
-from new_bimanual_pkg.path_simplify import simplify_path, make_is_valid_from_node
+from new_bimanual_pkg.path_simplify import simplify_path
 
 # --- constraints & constrained BiRRT helpers ---
 from new_bimanual_pkg.constraint import (
@@ -696,20 +696,16 @@ class PathNode(Node):
             return
         
         # --- Path simplification (조용한 유효성 검사 사용) ---
-        is_valid_quiet = make_is_valid_from_node(self)  # self = PathNode
         full = simplify_path(
             full,
-            is_valid_quiet,
+            node=self,                # ★ OMPL PathSimplifier 경로로 들어감 (MoveIt 유효성 사용)
             constraints=None,
-            max_step=0.03,
-            red_passes=1,
-            shortcut_attempts=200,
-            smooth_iters=0
+            max_step=0.02,            # 유효성 샘플 분해능 느낌과 매칭
+            red_passes=1,             # 폴백 경로일 때만 의미, OMPL에선 내부 reduce/smooth 사용
+            shortcut_attempts=200,    # 폴백 경로일 때만 의미
+            smooth_iters=0            # 폴백 경로일 때만 의미 (OMPL은 자체 B-spline smooth 사용)
         )
-
-
-
-
+        
         # ---------- 여기부터 추가 (기존 self.publish_joint_trajectory(...) 삭제/대체) ----------
         # full shape: (N, 14)  ← N: 웨이포인트 수
         dof_each = 7

@@ -50,7 +50,6 @@ setup(
             'trajectory = new_bimanual_pkg.trajectory:main',
             'constraint = new_bimanual_pkg.constraint:main',
             'constraint_birrt = new_bimanual_pkg.constraint_birrt:main',
-            'min_fk_node = new_bimanual_pkg.min_fk_node:main',
             'simplify = new_bimanual_pkg.path_simplify:main',
         ],
     },

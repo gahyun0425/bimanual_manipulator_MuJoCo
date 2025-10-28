@@ -1,14 +1,13 @@
-# new_bimanual_pkg/path_simplify.py
 from __future__ import annotations
 import numpy as np
 import random
 import time
 from typing import Callable, Optional
 
-# q와 constraint를 받아 유효/무효를 돌려주는 콜백의 타입 -> smoothing 과정에서 충돌과 리밋 검사 위해
+# q와 constraint를 받아 유효/무효를 돌려주는 콜백 타입
 IsValidFn = Callable[[np.ndarray, Optional[object]], bool]
 
-# joint limit 확인
+# joint limit 검사
 def _joint_limit_ok(q: np.ndarray, lb: np.ndarray, ub: np.ndarray) -> bool:
     q  = np.asarray(q,  float)
     lb = np.asarray(lb, float)
@@ -19,13 +18,12 @@ def _joint_limit_ok(q: np.ndarray, lb: np.ndarray, ub: np.ndarray) -> bool:
         return False
     return True
 
-# 현재 q가 Moveit의 충돌/제약 검사를 통과하는지 서비스 호출로 확인
-# q와 constraint가 유효하면 True 반환
+# GetStateValidity 서비스로 충돌, 제약 포함 상태 유효성 확인
 def _call_moveit_validity(node,
                           q: np.ndarray,
                           constraints: Optional[object] = None,
                           timeout: float = 0.25) -> bool:
-    
+
     required = ("joint_names", "lb", "ub", "group_name", "state_valid_cli")
     if not all(hasattr(node, k) for k in required):
         return False
@@ -54,12 +52,12 @@ def _call_moveit_validity(node,
 
         fut = cli.call_async(req)
 
-        # 1) 우선 spin_until_future_complete 시도
+        # spin_until_future_complete 우선 시도
         try:
             import rclpy
             rclpy.spin_until_future_complete(node, fut, timeout_sec=float(timeout))
         except Exception:
-            # 2) 실패 시 폴링으로 폴백
+            # 실패 시 폴링
             t0 = time.time()
             while not fut.done():
                 if time.time() - t0 > timeout:
@@ -75,28 +73,25 @@ def _call_moveit_validity(node,
 
         res = fut.result()
         return bool(res and res.valid)
-
     except Exception:
         return False
 
-# 위의 Moveit 검사를 콜백 형태로 만들어 돌려 줌. -> is valid처럼 간단히 부를 수 있는 함수 생성
+# Moveit 검사기를 간단히 호출할 수 있는 is_valid 콜백으로 래핑
 def make_is_valid_from_node(node):
     def _cb(q: np.ndarray, constraints: Optional[object] = None) -> bool:
         return _call_moveit_validity(node, q, constraints, timeout=0.25)
     return _cb
 
-# 직선 보간을 통해 중간 점들이 전부 유효함지 체크 -> 중간 샘플 다 통과하면 True 반환
+# 직선 보간 중간 샘플들이 전부 유효한지 체크
 def _edge_is_valid(q1: np.ndarray,
                    q2: np.ndarray,
                    is_valid: IsValidFn,
                    constraints: Optional[object] = None,
                    max_step: float = 0.012,
                    min_samples: int = 3) -> bool:
-
     q1 = np.asarray(q1, float); q2 = np.asarray(q2, float)
     seg_len = float(np.linalg.norm(q2 - q1)) + 1e-12
     n = max(min_samples, int(np.ceil(seg_len / max(1e-9, max_step))))
-    # 내부 샘플만 검사 (끝점은 이미 유효하다고 가정)
     for k in range(1, n):  # 1..n-1
         a = k / n
         q = (1.0 - a) * q1 + a * q2
@@ -104,13 +99,12 @@ def _edge_is_valid(q1: np.ndarray,
             return False
     return True
 
-# 경로 간소화 과정 -> 중간 포인트가 필요 없으면 지움 -> 포인트 수 감소 (불필요한 굴곡 제거) -> 후 처리 안정/고속
+# 충돌 없이 건너뛰기 가능한 중간 점들을 삭제해 경로 점 수를 줄임
 def reduce_vertices(path: np.ndarray,
                     is_valid: IsValidFn,
                     constraints: Optional[object] = None,
                     max_step: float = 0.012,
                     passes: int = 3) -> np.ndarray:
-
     if path is None or len(path) < 3:
         return np.asarray(path, float)
     P = np.asarray(path, float)
@@ -130,7 +124,6 @@ def reduce_vertices(path: np.ndarray,
         if keep[-1] != len(P) - 1:
             keep.append(len(P) - 1)
 
-        # 순서 보존 + 중복 제거
         new_keep = []
         seen = set()
         for idx in keep:
@@ -140,8 +133,7 @@ def reduce_vertices(path: np.ndarray,
         P = P[np.asarray(new_keep, dtype=int)]
     return P
 
-
-# 비용(길이 + 곡률) 경로의 길이 + 곡률(라플라시안 제곱)을 합친 점수 계산 =? 쇼트컷을 할지 말지 정량적으로 판단하기 위해
+# 경로 길이 + 곡률(라플라시안 제곱) 가중합으로 비용 계산
 def _path_cost(P: np.ndarray, lam_len: float = 1.0, lam_curv: float = 4.0) -> float:
     P = np.asarray(P, float)
     if len(P) < 2:
@@ -153,8 +145,7 @@ def _path_cost(P: np.ndarray, lam_len: float = 1.0, lam_curv: float = 4.0) -> fl
     C = float(np.sum(np.sum(lap * lap, axis=1)))
     return lam_len * L + lam_curv * C
 
-# 쇼트컷(곡률인지) -> 경로의 임의 구간이 직선으로 대체 가능한지 확인하고, 충돌 ok + 비용감소 할 때만 수락
-# 충돌은 지키면서 지그재그/뾰족 코너가 눈에 띄게 줄어듦
+# 무작위 구간을 직선으로 대체해 비용이 줄면 채택하는 쇼트컷
 def shortcut_path_curvaware(path: np.ndarray,
                             is_valid: IsValidFn,
                             constraints: Optional[object] = None,
@@ -163,7 +154,6 @@ def shortcut_path_curvaware(path: np.ndarray,
                             lam_len: float = 1.0,
                             lam_curv: float = 4.0,
                             rng: Optional[random.Random] = None) -> np.ndarray:
-
     if path is None or len(path) < 3:
         return np.asarray(path, float)
     P = np.asarray(path, float).copy()
@@ -184,14 +174,13 @@ def shortcut_path_curvaware(path: np.ndarray,
                 base_cost = new_cost
     return P
 
-# 각 중간 점을 이웃과 평균에 가깝게 조금씩 이동해 모서리를 둥글게 바꾼 뒤 양옆 선분이 충돌 없이 유효할 때만 반영
+# 중간 점을 이웃 평균 쪽으로 이동하되 충돌 없는 경우에만 스무딩 반영
 def laplacian_smooth(path: np.ndarray,
                      is_valid: IsValidFn,
                      constraints: Optional[object] = None,
                      step: float = 0.35,
                      iters: int = 25,
                      max_step: float = 0.012) -> np.ndarray:
-
     if path is None or len(path) < 3:
         return np.asarray(path, float)
     P = np.asarray(path, float).copy()
@@ -213,9 +202,8 @@ def laplacian_smooth(path: np.ndarray,
             break
     return P
 
-# 밀도 보강 -> 이웃 포인트 사이 간격이 max_step 넘지 않도록 중간 점 추가
+# 인접 점 간 거리가 max_step 이하가 되도록 중간 점을 삽입
 def densify_by_maxstep(path: np.ndarray, max_step: float = 0.012) -> np.ndarray:
-
     if path is None or len(path) < 2:
         return np.asarray(path, float)
     P = np.asarray(path, float)
@@ -228,12 +216,106 @@ def densify_by_maxstep(path: np.ndarray, max_step: float = 0.012) -> np.ndarray:
             out.append((1 - k/n) * a + (k/n) * b)
     return np.asarray(out, float)
 
-# 전체 파이프라인
+# OMPL PathSimplifier(점 감소→쇼트컷→B-스플라인)로 MoveIt 유효성 기반 경로 단순화.
+def simplify_path_with_ompl(node,
+                            path: np.ndarray,
+                            constraints: Optional[object] = None,
+                            *,
+                            max_step: float = 0.012,
+                            reduce_vertices: bool = True,
+                            do_shortcut: bool = True,
+                            do_bspline: bool = True,
+                            shortcut_max_time: float = 2.0,
+                            bspline_max_time: float = 1.5,
+                            rng_seed: Optional[int] = None
+                            ) -> np.ndarray:
+
+    if path is None or len(path) < 2:
+        return np.asarray(path, float)
+
+    try:
+        import ompl.base as ob
+        import ompl.geometric as og
+    except Exception:
+        # OMPL 바인딩이 없으면 None 반환해서 폴백 사용
+        return None
+
+    P = np.asarray(path, float)
+    dof = int(P.shape[1])
+
+    # 1) 상태공간 & 경계
+    space = ob.RealVectorStateSpace(dof)
+    bounds = ob.RealVectorBounds(dof)
+    for i in range(dof):
+        bounds.setLow(i, float(getattr(node, "lb")[i]))
+        bounds.setHigh(i, float(getattr(node, "ub")[i]))
+    space.setBounds(bounds)
+
+    # 2) SpaceInformation
+    si = ob.SpaceInformation(space)
+
+    # validity checker: MoveIt 서비스 재사용
+    is_valid = make_is_valid_from_node(node)
+    class _VC(ob.StateValidityChecker):
+        def __init__(self, si):
+            super().__init__(si)
+        def isValid(self, state: ob.State) -> bool:
+            q = np.array([state[i] for i in range(dof)], dtype=float)
+            return is_valid(q, constraints)
+
+    si.setStateValidityChecker(_VC(si))
+
+    # 분해능 설정: edge 샘플 간격 비슷하게 (절대/상대 혼용)
+    # OMPL은 fraction으로 많이 쓰므로 conservative 하게 설정
+    # 각 Joint step을 유사하게 맞추기 위해 resolution도 조정
+    si.setStateValidityCheckingResolution(max(1e-5, max_step))  # absolute step (for R^n)
+    space.setup()
+    si.setup()
+
+    # 3) 기존 path -> PathGeometric
+    pg = og.PathGeometric(si)
+    for q in P:
+        s = ob.State(space)
+        for i in range(dof):
+            s[i] = float(q[i])
+        pg.append(s)
+
+    # 4) Simplifier
+    if rng_seed is not None:
+        ob.RandomNumbers().setSeed(rng_seed)
+
+    simplifier = og.PathSimplifier(si)
+
+    # (a) 꼭짓점 감소
+    if reduce_vertices:
+        # reduceVertices: 인접한 점을 삭제해도 유효하면 제거
+        simplifier.reduceVertices(pg)
+
+    # (b) 쇼트컷
+    if do_shortcut:
+        # shortcutPath(path, max_time, range_ratio=0.0)
+        # range_ratio=0이면 내부 기본값 사용 (적응형)
+        simplifier.shortcutPath(pg, shortcut_max_time)
+
+    # (c) B-스플라인 스무딩
+    if do_bspline:
+        # smoothBSpline(path, max_time, min_change)
+        simplifier.smoothBSpline(pg, bspline_max_time)
+
+    # 5) 결과 -> numpy
+    out = []
+    for i in range(pg.getStateCount()):
+        st = pg.getState(i)
+        out.append([st[j] for j in range(dof)])
+    return np.asarray(out, float)
+
+# 가능하면 OMPL로, 실패 시 자체(리덕션→쇼트컷→스무딩) 파이프라인으로 경로 단순화하는 엔트리 함수.
 def simplify_path(path: np.ndarray,
-                  is_valid: IsValidFn,
+                  is_valid: Optional[IsValidFn] = None,
                   constraints: Optional[object] = None,
                   *,
-                  max_step: float = 0.012,
+                  node: Optional[object] = None,
+                  max_step: float = 0.02,
                   red_passes: int = 3,
                   shortcut_attempts: int = 900,
                   lam_len: float = 1.0,
@@ -242,7 +324,34 @@ def simplify_path(path: np.ndarray,
                   smooth_step: float = 0.35,
                   do_densify: bool = False,
                   rng: Optional[random.Random] = None) -> np.ndarray:
-    
+
+    # OMPL 경로 단순화 시도 (node가 있고 필수 필드가 있을 때)
+    if node is not None and all(hasattr(node, k) for k in ("lb", "ub", "joint_names", "group_name", "state_valid_cli")):
+        ompl_out = simplify_path_with_ompl(
+            node=node,
+            path=path,
+            constraints=constraints,
+            max_step=max_step,
+            reduce_vertices=True,
+            do_shortcut=True,
+            do_bspline=True,
+            shortcut_max_time=0.45,
+            bspline_max_time=0.25,
+            rng_seed=None
+        )
+        if isinstance(ompl_out, np.ndarray) and len(ompl_out) >= 2:
+            if do_densify:
+                ompl_out = densify_by_maxstep(ompl_out, max_step=max_step)
+            return ompl_out
+
+    # ---- 폴백: 기존 파이프라인 ----
+    if is_valid is None:
+        # node로부터 생성 가능하면 생성
+        if node is not None:
+            is_valid = make_is_valid_from_node(node)
+        else:
+            raise ValueError("simplify_path: OMPL을 쓰려면 node가 필요하고, 폴백을 쓰려면 is_valid 콜백이 필요합니다.")
+
     if path is None or len(path) < 2:
         return np.asarray(path, float)
 
