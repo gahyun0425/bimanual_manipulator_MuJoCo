@@ -92,29 +92,28 @@ class PathNode(Node):
         self.ee_frame_id = self.ee_frame_id_l
 
         # 시작자세 (RRT 시작점 및 FK용)
+                # 시작자세 (RRT 시작점 및 FK용)
         self.start_q = np.zeros(len(self.joint_names), dtype=float)
 
-        # 좌/우 목표 pose 입력
-        print("\n왼팔 목표 위치 입력 (x y z) [예: 0.5 0.2275 1.199] : ", end="")
-        raw = input()
-        x, y, z = map(float, raw.strip().split())
-        target_l = np.array([x, y, z], dtype=float)
+        # === 좌/우 목표 pose 고정 값으로 사용 ===
+        # 왼쪽 좌표값: 0.5  0.23  1.12
+        target_l = np.array([0.5, 0.23, 1.12], dtype=float)
 
-        print("\n왼팔 방위 (roll pitch yaw in deg) [예: 90 0 0] : ", end="")
-        raw = input()
-        rL, pL, yL = map(float, raw.strip().split())
-        rL = math.radians(rL); pL = math.radians(pL); yL = math.radians(yL)
+        # 왼쪽 방위값 (deg): 90 0 0
+        rL, pL, yL = 90.0, 0.0, 0.0
+        rL = math.radians(rL)
+        pL = math.radians(pL)
+        yL = math.radians(yL)
         quat_l = quat_from_rpy(rL, pL, yL)
 
-        print("\n오른팔 목표 위치 입력 (x y z) [예: 0.5 -0.2275 1.199] : ", end="")
-        raw = input()
-        x, y, z = map(float, raw.strip().split())
-        target_r = np.array([x, y, z], dtype=float)
+        # 오른쪽 좌표값: 0.5  -0.23  1.12
+        target_r = np.array([0.5, -0.23, 1.12], dtype=float)
 
-        print("\n오른팔 방위 (roll pitch yaw in deg) [예: -90 0 0] : ", end="")
-        raw = input()
-        rR, pR, yR = map(float, raw.strip().split())
-        rR = math.radians(rR); pR = math.radians(pR); yR = math.radians(yR)
+        # 오른쪽 방위값 (deg): -90 0 0
+        rR, pR, yR = -90.0, 0.0, 0.0
+        rR = math.radians(rR)
+        pR = math.radians(pR)
+        yR = math.radians(yR)
         quat_r = quat_from_rpy(rR, pR, yR)
 
         seed_left  = [0.0] * len(left_names)
@@ -153,6 +152,7 @@ class PathNode(Node):
         )
         if ik_r is None:
             raise RuntimeError("Right IK failed (TRAC-IK)")
+
         
         # moveit group & joint limit
         self.group_name = 'both_arms'

@@ -16,22 +16,51 @@ data_files = [
 ]
 
 # === mujoco_models/** 전체 구조 보존 설치 (assets, furniture_sim 등 모두) ===
-for root, _, files in os.walk('mujoco_models'):
+for root, dirs, files in os.walk('mujoco_models'):
+    # 🔹 .git 디렉토리는 os.walk 재귀에서 제외
+    if '.git' in dirs:
+        dirs.remove('.git')
+
     if not files:
         continue
+
     rel = os.path.relpath(root, 'mujoco_models')  # e.g. assets/ffw_bg2, furniture_sim/counters
     install_root = os.path.join('share', package_name, 'mujoco_models', rel)
-    src_files = [os.path.join(root, f) for f in files]
+
+    # 🔹 혹시 모를 안전장치로 .git 경로는 한 번 더 필터링
+    src_files = [
+        os.path.join(root, f)
+        for f in files
+        if '.git' not in root.split(os.sep)
+    ]
+
+    if not src_files:
+        continue
+
     data_files.append((install_root, src_files))
 
 # (선택) 별도 meshes/ 디렉토리를 MJCF가 직접 참조한다면 같이 넣기
 if os.path.isdir('meshes'):
-    for root, _, files in os.walk('meshes'):
+    for root, dirs, files in os.walk('meshes'):
+        # 🔹 meshes 쪽에도 .git 있을 수 있으니 동일하게 제외
+        if '.git' in dirs:
+            dirs.remove('.git')
+
         if not files:
             continue
+
         rel = os.path.relpath(root, 'meshes')  # e.g. ffw_bg2, common/rh_p12_rn_a
         install_root = os.path.join('share', package_name, 'meshes', rel)
-        src_files = [os.path.join(root, f) for f in files]
+
+        src_files = [
+            os.path.join(root, f)
+            for f in files
+            if '.git' not in root.split(os.sep)
+        ]
+
+        if not src_files:
+            continue
+
         data_files.append((install_root, src_files))
 
 setup(
