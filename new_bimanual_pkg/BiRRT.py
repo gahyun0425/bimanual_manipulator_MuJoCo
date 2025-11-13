@@ -1,18 +1,17 @@
-# bidirectional RRT code
-# collision detection 진행
+# Bidirectional RRT code
 
 import numpy as np
 import time
 
-from new_bimanual_pkg.collision_detection import is_state_valid
+from new_bimanual_pkg.constraint import is_state_valid
 from new_bimanual_pkg.linear_interpolation import linear_edge_samples
 
 class BiRRT:
     def __init__(self,
-                 joint_names,           # MoveIt/URDF 순서의 관절 이름 리스트
-                 lb, ub,                # 조인트 하/상한 (list/np 모두 OK)
+                 joint_names,         
+                 lb, ub,              
                  group_name="manipulator",
-                 state_dim=None,        # 생략 시 len(joint_names)
+                 state_dim=None,        # 관절 공간 차원 -> RRT가 탐색하는 q의 길이 -> joint_names
                  max_iter=2000,
                  step_size=0.1,
                  edge_check_res=0.05):
@@ -22,6 +21,7 @@ class BiRRT:
         self.lb = np.asarray(lb, dtype=float)
         self.ub = np.asarray(ub, dtype=float)
         self.group_name = group_name
+        # 따로 state_dim에 대한 입력이 없다면 joint_name으로 입력됨
         self.state_dim = int(state_dim if state_dim is not None else len(self.joint_names))
 
         self.max_iter = int(max_iter)
@@ -32,10 +32,11 @@ class BiRRT:
         self.start_tree = None
         self.goal_tree = None
 
+    # tree의 맨 처음 기준이 되는 노드 = root node
     def _new_tree(self, q_root: np.ndarray):
         q_root = np.asarray(q_root, dtype=float) # 루트 상태를 float 배열로
         return [{'q': q_root, 'parent': None}] # 루트 노드: 부모 없음, 비용 0
-
+    
     # start tree 초기화
     def set_start(self, q_start: np.ndarray):
         self.start_tree = self._new_tree(q_start)
@@ -46,8 +47,8 @@ class BiRRT:
 
     # collision detectioin
     def is_valid(self, q: np.ndarray) -> bool:
-        return is_state_valid(q, self.joint_names, self.lb, self.ub, self.group_name) 
-    
+        return is_state_valid(q, self.joint_names, self.lb, self.ub, self.group_name)
+
     def sample_random_config(self) -> np.ndarray:
         return np.random.uniform(self.lb, self.ub, size=self.state_dim)
     
@@ -61,7 +62,7 @@ class BiRRT:
         if L == 0.0: # 동일 지점이면,
             return q_from.copy() # 그대로 반환
         step = min(self.step_size, L) # 최대 스텝 제한
-        return q_from + d * (step / L) # 한 스텝 전진한 점
+        return q_from + d * (step / L) # 한 스텝 전진한 점 
     
     #edge linear interpolation 진행 및 edge 샘플링
     def edge_is_valid(self, qa: np.ndarray, qb: np.ndarray) -> bool:
@@ -122,10 +123,7 @@ class BiRRT:
         if self.start_tree is None or self.goal_tree is None:
             raise RuntimeError("start/goal이 설정되지 않았습니다. set_start(), set_goal() 먼저 호출하세요.")
 
-        t0 = time.time()
         for _ in range(self.max_iter):
-            if max_time is not None and (time.time() - t0) > max_time:
-                break
 
             q_rand = self.sample_random_config()
             if not self.is_valid(q_rand):

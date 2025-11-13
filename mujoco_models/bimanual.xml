@@ -1,8 +1,15 @@
 <mujoco model="ffw_sg2">
-  <compiler angle="radian" meshdir="assets" autolimits="true"/>
+  <compiler angle="radian" meshdir="assets" texturedir="furniture_sim" autolimits="true"/>
 
   <option timestep="0.0015" integrator="implicitfast" gravity="0 0 -9.81"
           iterations="120" ls_iterations="60" cone="pyramidal"/>
+
+  <include file="furniture_sim/counters/counters_asset.xml"/>
+  <include file="furniture_sim/hingecabinet/hingecabinet_asset.xml"/>
+  <include file="furniture_sim/simpleTable/simpleTable_asset.xml"/>
+  <include file="furniture_sim/microwave/microwave_asset.xml"/>
+
+  <!-- <include file="furniture_sim/oven/oven_asset.xml"/> -->
 
   <!--
     Default classes:
@@ -66,24 +73,74 @@
     <mesh name="r2" file="ffw_bg2/r2.stl" scale="0.001 0.001 0.001"/>
     <mesh name="l1" file="ffw_bg2/l1.stl" scale="0.001 0.001 0.001"/>
     <mesh name="l2" file="ffw_bg2/l2.stl" scale="0.001 0.001 0.001"/>
+    <texture name="stone1" type="2d" file="common/textures/stone1.png"/>
+    <texture name="wood0"  type="2d" file="common/textures/wood0.png"/>
+    <texture name="floor_grid_tex"
+             type="2d"
+             builtin="checker"
+             width="1024" height="1024"
+             rgb1="0.10 0.12 0.18"
+             rgb2="0.14 0.16 0.22" 
+             mark="none"/>
+
+    <material name="floor_grid_mat"
+              texture="floor_grid_tex"
+              texrepeat="6 6"
+              texuniform="true"
+              reflectance="0.02"/>
+
+    <texture name="white_sky"
+             type="skybox"
+             builtin="gradient"
+             rgb1="1 1 1"
+             rgb2="1 1 1"
+             width="256"
+             height="1536"/>
+      
+    <texture name="wall_matte_brown"  type="2d" file="common/textures/wood0.png"/>
+    <material name="wall_matte_brown_mat" texture="wall_matte_brown"/>
+
+
+    <!-- <material name="wall_matte_brown"
+            rgba="0.62 0.47 0.35 1"  
+            specular="0"            
+            shininess="0.05"       
+            roughness="0.9"         
+            metallic="0.0"         
+            />  -->
+<!-- 
+    <mesh name="burnerplate1"     file="furniture_sim/oven/meshes/burnerplate.stl" scale="0.5 0.5 0.5"/>
+    <mesh name="oventop1"         file="furniture_sim/oven/meshes/oventop.stl"     scale="0.5 0.5 0.5"/>
+    <mesh name="ovenwindow1"      file="furniture_sim/oven/meshes/ovenwindow.stl"  scale="0.5 0.5 0.5"/>
+    <mesh name="stoverim1"        file="furniture_sim/oven/meshes/stoverim.stl"    scale="0.5 0.5 0.5"/>
+    <mesh name="oven1"            file="furniture_sim/oven/meshes/oven.stl"        scale="0.5 0.5 0.5"/>
+    <mesh name="hood1"            file="furniture_sim/oven/meshes/hood.stl"        scale="0.5 0.5 0.5"/>
+    <mesh name="lightswitchbase1" file="furniture_sim/oven/meshes/lightswitchbase.stl" scale="0.5 0.5 0.5"/> -->
+
   </asset>
 
   <worldbody>
 
     <light name="main_light" pos="0 0 5" dir="0 0 -1" diffuse="1 1 1" specular="0.1 0.1 0.1" directional="true"/>
-    <geom name="floor" size="0 0 .05" type="plane" material="grid" contype="1" conaffinity="1" friction="1 0.005 0.0001"/>
+    <geom name="floor"
+          type="plane"
+          size="0 0 0.05"
+          material="floor_grid_mat"
+          contype="1"
+          conaffinity="1"
+          friction="1 0.005 0.0001"/>
 
-    <body name="table">
+    <!-- <body name="table"> -->
     <!-- 상판: 윗면 높이 1.0m (0.975 + 0.025) -->
-    <geom name="table_top" type="box"
+    <!-- <geom name="table_top" type="box"
           pos="0.5 0 0.975" size="0.25 0.25 0.025" rgba="0.8 0.5 0.3 1"
           contype="1" conaffinity="1"
           friction="1.2 0.02 0.001"
           solref="0.003 1"
-          solimp="0.95 0.99 0.001"/>
+          solimp="0.95 0.99 0.001"/> -->
 
     <!-- 다리들 (충돌 참여: 선택이지만 안정성↑) -->
-    <geom name="table_leg1" type="box"
+    <!-- <geom name="table_leg1" type="box"
           pos="0.725  0.225 0.475" size="0.025 0.025 0.475"
           contype="1" conaffinity="1"
           friction="1.0 0.01 0.001"
@@ -103,14 +160,34 @@
           contype="1" conaffinity="1"
           friction="1.0 0.01 0.001"
           solref="0.003 1" solimp="0.95 0.99 0.001"/>
-  </body>
+  </body> -->
 
     
     <!-- object.xml: include로 불러 쓸 동적 강체(냄비) -->
     <!-- 본체 xml의 <worldbody> 내부 어딘가에서 <include file="object.xml"/> 로 삽입 -->
 
+
+  <body name="wall" pos="0 0 0">
+
+    <inertial pos="0 0 0" mass="0.5" diaginertia="0.002 0.002 0.002"/>
+
+    <geom name="wall_back" type="box"
+          size="0.05 3.0 2.0"
+          pos="-2.0 0 1.5"
+          mass="0" density="1500"
+          material="wall_matte_brown_mat"/>
+
+    <geom name="wall_left" type="box"
+          size="3.0 0.05 2.0"
+          pos="0.0 2.0 1.5"
+          mass="0" density="1500"
+          material="wall_matte_brown_mat"/>
+  </body>
+
+
     <body name="object" pos="0.5 0.0 1.0051">
       <freejoint/>
+      <inertial pos="0 0 0.06" mass="0.5" diaginertia="0.002 0.002 0.002"/>
 
       <!-- 바닥: 질량 0 (충돌/시각만) -->
       <geom name="pot_bottom" type="box"
@@ -189,14 +266,38 @@
 
       <!-- (선택) COM을 더 옆으로 미세 이동시키는 투명 카운터웨이트 -->
       <!-- 필요시 주석 해제해서 사용: COM 투영을 접촉 패치 안으로 더 밀어넣음 -->
-      <!--
+      
       <geom name="counter" type="sphere"
             pos="0.07 0 0.06"
             size="0.01"
             density="8000"
             rgba="0 0 0 0"/>
-      -->
+     
     </body>
+
+    <body name="kitchen_counter" pos="0.87 0.12 -0.01" quat="1 0 0 0" >
+      <include file="furniture_sim/counters/box_counter_body.xml"/>
+    </body>
+
+    <body name="kitchen_sink" pos="0.87 0.48 -0.043" quat="1 0 0 0" >
+      <include file="furniture_sim/counters/sink_counter_body.xml"/>
+    </body>
+
+    <body name="hingecabinet" pos="-1.8 0.5 1.5" quat="1 0 0 1" >
+      <include file="furniture_sim/hingecabinet/hingecabinet_body.xml"/>
+    </body>
+
+    <body name="simpleTable" pos="-0.3 1.5 0.0" quat="1 0 0 0" >
+      <include file="furniture_sim/simpleTable/simpleMarbleTable_body.xml"/>
+    </body>
+
+    <body name="microwave" pos="-0.3 1.5 0.75" quat="1 0 0 0" >
+      <include file="furniture_sim/microwave/microwave_body0.xml"/>
+    </body>
+
+    <!-- <body name="oven" pos="1.0 0.0 0.00" quat="1 0 0 0" >
+      <include file="furniture_sim/oven/oven_body.xml"/>
+    </body> -->
 
 
 
@@ -323,7 +424,7 @@
 
                             <geom name="pad_r" type="box"
                                   size="0.010 0.0035 0.020" 
-                                  pos="0 -0.01 0.02"
+                                  pos="0 -0.0 0.02"
                                   rgba="0.9 0.3 0.3 1"
                                   friction="1.5 0.05 0.002" condim="4"
                                   contype="1" conaffinity="1"
@@ -340,7 +441,7 @@
                             <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="l2"/>
                             <geom name="pad_l" type="box"
                                   size="0.010 0.0035 0.020" 
-                                  pos="0 0.01 0.02"
+                                  pos="0 0.0 0.02"
                                   rgba="0.9 0.3 0.3 1"
                                   friction="1.5 0.05 0.002" condim="4"
                                   contype="1" conaffinity="1"
@@ -405,7 +506,7 @@
                             <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="r2"/>
                             <geom name="pad_r2" type="box"
                                   size="0.010 0.0035 0.020" 
-                                  pos="0 -0.01 0.02"
+                                  pos="0 -0.0 0.02"
                                   rgba="0.9 0.3 0.3 1"
                                   friction="1.5 0.05 0.002" condim="4"
                                   contype="1" conaffinity="1"
@@ -422,7 +523,7 @@
                             <geom type="mesh" rgba="0.2 0.2 0.2 1" mesh="l2"/>
                             <geom name="pad_l2" type="box"
                                   size="0.010 0.0035 0.020" 
-                                  pos="0 0.01 0.02"
+                                  pos="0 0.0 0.02"
                                   rgba="0.9 0.3 0.3 1"
                                   friction="1.5 0.05 0.002" condim="4"
                                   contype="1" conaffinity="1"
@@ -536,3 +637,4 @@
   </actuator>
 
 </mujoco>
+

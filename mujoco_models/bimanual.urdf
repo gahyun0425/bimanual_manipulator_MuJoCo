@@ -12,15 +12,15 @@
   </joint>
 
   <!-- ========= static table (top @ z = 1.0 m) ========= -->
-  <joint name="table_fixed_joint" type="fixed">
+  <!-- <joint name="table_fixed_joint" type="fixed">
     <parent link="world"/>
     <child link="table_link"/>
     <origin rpy="0 0 0" xyz="0 0 0"/>
-  </joint>
+  </joint> -->
 
-  <link name="table_link">
+  <!-- <link name="table_link"> -->
     <!-- 상판: full 0.50 x 0.50 x 0.05, center @ (0.5, 0, 0.975) -->
-    <visual>
+    <!-- <visual>
       <origin xyz="0.5 0 0.98" rpy="0 0 0"/>
       <geometry><box size="0.52 0.52 0.05"/></geometry>
       <material name="table_top_mat"><color rgba="0.8 0.5 0.3 1"/></material>
@@ -28,11 +28,11 @@
     <collision>
       <origin xyz="0.5 0 0.98" rpy="0 0 0"/>
       <geometry><box size="0.52 0.52 0.05"/></geometry>
-    </collision>
+    </collision> -->
 
     <!-- 다리들: 단면 0.05 x 0.05, 높이 0.95 → center z = 0.475 -->
     <!-- leg1 @ (0.725, 0.225, 0.475) -->
-    <visual>
+    <!-- <visual>
       <origin xyz="0.725 0.225 0.475" rpy="0 0 0"/>
       <geometry><box size="0.07 0.07 1.0"/></geometry>
       <material name="table_leg_mat"><color rgba="0.6 0.6 0.6 1"/></material>
@@ -40,10 +40,10 @@
     <collision>
       <origin xyz="0.725 0.225 0.475" rpy="0 0 0"/>
       <geometry><box size="0.07 0.07 1.0"/></geometry>
-    </collision>
+    </collision> -->
 
     <!-- leg2 @ (0.275, 0.225, 0.475) -->
-    <visual>
+    <!-- <visual>
       <origin xyz="0.275 0.225 0.475" rpy="0 0 0"/>
       <geometry><box size="0.07 0.07 1.0"/></geometry>
       <material name="table_leg_mat2"><color rgba="0.6 0.6 0.6 1"/></material>
@@ -51,10 +51,10 @@
     <collision>
       <origin xyz="0.275 0.225 0.475" rpy="0 0 0"/>
       <geometry><box size="0.07 0.07 1.0"/></geometry>
-    </collision>
+    </collision> -->
 
     <!-- leg3 @ (0.725, -0.225, 0.475) -->
-    <visual>
+    <!-- <visual>
       <origin xyz="0.725 -0.225 0.475" rpy="0 0 0"/>
       <geometry><box size="0.07 0.07 1.0"/></geometry>
       <material name="table_leg_mat3"><color rgba="0.6 0.6 0.6 1"/></material>
@@ -62,10 +62,10 @@
     <collision>
       <origin xyz="0.725 -0.225 0.475" rpy="0 0 0"/>
       <geometry><box size="0.07 0.07 1.0"/></geometry>
-    </collision>
+    </collision> -->
 
     <!-- leg4 @ (0.275, -0.225, 0.475) -->
-    <visual>
+    <!-- <visual>
       <origin xyz="0.275 -0.225 0.475" rpy="0 0 0"/>
       <geometry><box size="0.07 0.07 1.0"/></geometry>
       <material name="table_leg_mat4"><color rgba="0.6 0.6 0.6 1"/></material>
@@ -74,22 +74,22 @@
       <origin xyz="0.275 -0.225 0.475" rpy="0 0 0"/>
       <geometry><box size="0.07 0.07 1.0"/></geometry>
     </collision>
-  </link>
+  </link> -->
   <!-- ========= end table ========= -->
 
 
-  <joint name="pot_free_joint" type="floating">
+  <!-- <joint name="pot_free_joint" type="floating">
     <parent link="world"/>
     <child link="pot_link"/>
-    <origin rpy="0 0 0" xyz="0.5 0.0 1.01"/>
+    <origin xyz="0.4 -0.1 1.0051" rpy="0 0 0"/>
   </joint>
 
   <link name="pot_link">
     <inertial>
-      <origin xyz="0 0 0"/>
+      <origin xyz="0 0 0.06" rpy="0 0 0"/>
       <mass value="5.35e-1"/>
       <inertia ixx="1.302e-03" ixy="0" ixz="0"
-              iyy="1.302e-03" iyz="0" izz="2.284e-03"/>
+               iyy="1.302e-03" iyz="0" izz="2.284e-03"/>
     </inertial>
 
     <visual>
@@ -100,115 +100,217 @@
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0"/>
       <geometry><box size="0.16 0.16 0.01"/></geometry>
-    </collision>
+    </collision> -->
 
-    <!-- front wall (height 0.10) -->
-    <visual>
+    <!-- front wall -->
+    <!-- <visual>
       <origin xyz="0 0.075 0.05" rpy="0 0 0"/>
-      <geometry><box size="0.16 0.01 0.10"/></geometry>
+      <geometry><box size="0.17 0.02 0.10"/></geometry>
       <material name="pot_wall_mat"><color rgba="0.25 0.35 0.45 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 0.075 0.05" rpy="0 0 0"/>
-      <geometry><box size="0.16 0.01 0.10"/></geometry>
-    </collision>
+      <geometry><box size="0.17 0.02 0.10"/></geometry>
+    </collision> -->
 
-    <!-- back wall (height 0.10) -->
-    <visual>
+    <!-- back wall -->
+    <!-- <visual>
       <origin xyz="0 -0.075 0.05" rpy="0 0 0"/>
-      <geometry><box size="0.16 0.01 0.10"/></geometry>
+      <geometry><box size="0.17 0.02 0.10"/></geometry>
       <material name="pot_wall_mat_b"><color rgba="0.25 0.35 0.45 1"/></material>
     </visual>
     <collision>
       <origin xyz="0 -0.075 0.05" rpy="0 0 0"/>
-      <geometry><box size="0.16 0.01 0.10"/></geometry>
-    </collision>
+      <geometry><box size="0.17 0.02 0.10"/></geometry>
+    </collision> -->
 
-    <!-- left wall (height 0.10) -->
-    <visual>
+    <!-- left wall -->
+    <!-- <visual>
       <origin xyz="-0.075 0 0.05" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.16 0.10"/></geometry>
+      <geometry><box size="0.02 0.17 0.10"/></geometry>
       <material name="pot_wall_mat_l"><color rgba="0.25 0.35 0.45 1"/></material>
     </visual>
     <collision>
       <origin xyz="-0.075 0 0.05" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.16 0.10"/></geometry>
-    </collision>
+      <geometry><box size="0.02 0.17 0.10"/></geometry>
+    </collision> -->
 
-    <!-- right wall (height 0.10) -->
-    <visual>
+    <!-- right wall -->
+    <!-- <visual>
       <origin xyz="0.075 0 0.05" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.16 0.10"/></geometry>
+      <geometry><box size="0.02 0.17 0.10"/></geometry>
       <material name="pot_wall_mat_r"><color rgba="0.25 0.35 0.45 1"/></material>
     </visual>
     <collision>
       <origin xyz="0.075 0 0.05" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.16 0.10"/></geometry>
+      <geometry><box size="0.02 0.17 0.10"/></geometry>
     </collision>
 
-    <!-- handles (left) bars at z=0.07 -->
-    <!-- <visual>
-      <origin xyz="-0.03 0.0925 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.03 0.01"/></geometry>
-      <material name="pot_handle"><color rgba="0.3 0.55 0.7 1"/></material>
-    </visual>
-    <collision>
-      <origin xyz="-0.03 0.0925 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.03 0.01"/></geometry>
-    </collision>
+
+  </link> -->
+
+    <!-- ============================ -->
+  <!-- Kitchen counter (box_counter) -->
+  <!-- MJCF:
+       pos="0.85 0.25 0.0"
+       상판 half = 0.20372 0.4752 0.012  -> URDF full = 0.40744 0.9504 0.024
+       캐비닛 half = 0.2024  0.4708 0.485 -> URDF full = 0.4048  0.9416 0.97
+  -->
+
+<link name="kitchen_sink">
+  <!-- 캐비닛 본체 박스 -->
+  <visual>
+    <origin xyz="-0.4244 -0.3 0.525" rpy="0 0 0"/>
+    <geometry>
+      <box size="0.4 0.95 1.05"/>
+    </geometry>
+  </visual>
+  <collision>
+    <origin xyz="-0.4244 -0.3 0.525" rpy="0 0 0"/>
+    <geometry>
+      <box size="0.4 0.95 1.05"/>
+    </geometry>
+  </collision>
 
     <visual>
-      <origin xyz="0.03 0.0925 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.03 0.01"/></geometry>
-      <material name="pot_handle2"><color rgba="0.3 0.55 0.7 1"/></material>
-    </visual>
-    <collision>
-      <origin xyz="0.03 0.0925 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.03 0.01"/></geometry>
-    </collision> -->
+    <origin xyz="-0.5 -0.6 1.0051" rpy="0 0 0"/>
+    <geometry>
+      <box size="0.15 0.15 0.03"/>
+    </geometry>
+  </visual>
+  <collision>
+    <origin xyz="-0.5 -0.6 1.0051" rpy="0 0 0"/>
+    <geometry>
+      <box size="0.15 0.15 0.03"/>
+    </geometry>
+  </collision>
 
-    <!-- top connector left at z=0.07 -->
-    <!-- <visual>
-      <origin xyz="0.0 0.112 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.07 0.01 0.01"/></geometry>
-      <material name="pot_handle3"><color rgba="0.3 0.55 0.7 1"/></material>
-    </visual>
-    <collision>
-      <origin xyz="0.0 0.112 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.07 0.01 0.01"/></geometry>
-    </collision> -->
+  <!-- 상판: 얇은 박스 -->
+  <!-- <visual>
+    <origin xyz="-0.428 -0.3 1.0" rpy="0 0 0"/>
+    <geometry>
+      <box size="0.42 1.0 0.05"/>
+    </geometry>
+  </visual>
+  <collision>
+    <origin xyz="-0.428 -0.3 1.0" rpy="0 0 0"/>
+    <geometry>
+      <box size="0.42 1.0 0.05"/>
+    </geometry>
+  </collision> -->
+</link>
 
-    <!-- handles (right) at z=0.07 -->
-    <!-- <visual>
-      <origin xyz="-0.03 -0.0925 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.03 0.01"/></geometry>
-      <material name="pot_handle_r1"><color rgba="0.3 0.55 0.7 1"/></material>
-    </visual>
-    <collision>
-      <origin xyz="-0.03 -0.0925 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.03 0.01"/></geometry>
-    </collision>
+<joint name="kitchen_sink_fixed" type="fixed">
+  <parent link="world"/>
+  <child  link="kitchen_sink"/>
+  <!-- MJCF body pos="0.87 0.48 -0.033" 에 맞춤 -->
+  <origin xyz="0.87 0.48 -0.033" rpy="0 0 0"/>
+</joint>
 
-    <visual>
-      <origin xyz="0.03 -0.0925 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.03 0.01"/></geometry>
-      <material name="pot_handle_r2"><color rgba="0.3 0.55 0.7 1"/></material>
-    </visual>
-    <collision>
-      <origin xyz="0.03 -0.0925 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.01 0.03 0.01"/></geometry>
-    </collision>
 
-    <visual>
-      <origin xyz="0.0 -0.112 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.07 0.01 0.01"/></geometry>
-      <material name="pot_handle_r3"><color rgba="0.3 0.55 0.7 1"/></material>
-    </visual>
-    <collision>
-      <origin xyz="0.0 -0.112 0.07" rpy="0 0 0"/>
-      <geometry><box size="0.07 0.01 0.01"/></geometry>
-    </collision> -->
+
+
+<!-- === Sink pipes only (no cabinet/top; placed at world xyz="0.87 0.28 0.0") === -->
+
+<!-- Anchor for all sink pipes -->
+<!-- 고정 기준 -->
+  <!-- <link name="kitchen_sink_pipes"/>
+  <joint name="kitchen_sink_pipes_fixed" type="fixed">
+    <parent link="world"/>
+    <child  link="kitchen_sink_pipes"/>
+    <origin xyz="0.82 0.55 -0.05" rpy="0 0 0"/>
+  </joint> -->
+
+  <!-- 1) 마지막 원통: pos=-0.32 0.004 1.214 -->
+  <!-- <link name="pipe_cyl_last">
+    <visual>   <origin xyz="-0.32 0.004 1.214" rpy="0 0 0"/><geometry><cylinder radius="0.026" length="0.040"/></geometry></visual>
+    <collision><origin xyz="-0.32 0.004 1.214" rpy="0 0 0"/><geometry><cylinder radius="0.026" length="0.040"/></geometry></collision>
   </link>
+  <joint name="pipe_cyl_last_fix" type="fixed"><parent link="kitchen_sink_pipes"/><child link="pipe_cyl_last"/></joint> -->
+
+  <!-- 2) 마지막 캡슐: pos=-0.32 0.004 1.286 (구는 ±0.064) -->
+  <!-- <link name="pipe_cap_last">
+    <visual>   <origin xyz="-0.32 0.004 1.286" rpy="0 0 0"/><geometry><cylinder radius="0.020" length="0.128"/></geometry></visual>
+    <collision><origin xyz="-0.32 0.004 1.286" rpy="0 0 0"/><geometry><cylinder radius="0.020" length="0.128"/></geometry></collision>
+
+    <visual>   <origin xyz="-0.32 0.004 1.350" rpy="0 0 0"/><geometry><sphere radius="0.020"/></geometry></visual>
+    <visual>   <origin xyz="-0.32 0.004 1.222" rpy="0 0 0"/><geometry><sphere radius="0.020"/></geometry></visual>
+    <collision><origin xyz="-0.32 0.004 1.350" rpy="0 0 0"/><geometry><sphere radius="0.020"/></geometry></collision>
+    <collision><origin xyz="-0.32 0.004 1.222" rpy="0 0 0"/><geometry><sphere radius="0.020"/></geometry></collision>
+  </link>
+  <joint name="pipe_cap_last_fix" type="fixed"><parent link="kitchen_sink_pipes"/><child link="pipe_cap_last"/></joint> -->
+
+  <!-- 3) 중간 캡슐: frame pos=-0.27 0.005 1.350 (rpy는 유지), 내부는 프레임 기준 (y 오프셋 0으로 복구) -->
+  <!-- <link name="pipe_cap_mid_frame"/>
+  <joint name="pipe_cap_mid_frame_fix" type="fixed">
+    <parent link="kitchen_sink_pipes"/>
+    <child  link="pipe_cap_mid_frame"/>
+    <origin xyz="-0.27 0.005 1.350" rpy="0 1.57 0"/>
+  </joint>
+  <link name="pipe_cap_mid">
+    <visual>   <origin xyz="0 0 0" rpy="0 0 0"/><geometry><cylinder radius="0.020" length="0.088"/></geometry></visual>
+    <collision><origin xyz="0 0 0" rpy="0 0 0"/><geometry><cylinder radius="0.020" length="0.088"/></geometry></collision>
+
+    <visual>   <origin xyz="0 0 0.044"/><geometry><sphere radius="0.020"/></geometry></visual>
+    <visual>   <origin xyz="0 0 -0.044"/><geometry><sphere radius="0.020"/></geometry></visual>
+    <collision><origin xyz="0 0 0.044"/><geometry><sphere radius="0.020"/></geometry></collision>
+    <collision><origin xyz="0 0 -0.044"/><geometry><sphere radius="0.020"/></geometry></collision>
+  </link>
+  <joint name="pipe_cap_mid_fix" type="fixed"><parent link="pipe_cap_mid_frame"/><child link="pipe_cap_mid"/></joint> -->
+
+  <!-- 4) 처음 캡슐: pos=-0.22 0.004 1.190 (변경 없음) -->
+  <!-- <link name="pipe_cap_first">
+    <visual>   <origin xyz="-0.22 0.004 1.190" rpy="0 0 0"/><geometry><cylinder radius="0.020" length="0.320"/></geometry></visual>
+    <collision><origin xyz="-0.22 0.004 1.190" rpy="0 0 0"/><geometry><cylinder radius="0.020" length="0.320"/></geometry></collision>
+
+    <visual>   <origin xyz="-0.22 0.004 1.350"/><geometry><sphere radius="0.020"/></geometry></visual>
+    <visual>   <origin xyz="-0.22 0.004 1.030"/><geometry><sphere radius="0.020"/></geometry></visual>
+    <collision><origin xyz="-0.22 0.004 1.350"/><geometry><sphere radius="0.020"/></geometry></collision>
+    <collision><origin xyz="-0.22 0.004 1.030"/><geometry><sphere radius="0.020"/></geometry></collision>
+  </link>
+  <joint name="pipe_cap_first_fix" type="fixed"><parent link="kitchen_sink_pipes"/><child link="pipe_cap_first"/></joint> -->
+
+  <!-- 5) 처음 원통: pos=-0.22 0.004 1.086 (변경 없음) -->
+  <!-- <link name="pipe_cyl_first">
+    <visual>   <origin xyz="-0.22 0.004 1.086" rpy="0 0 0"/><geometry><cylinder radius="0.026" length="0.112"/></geometry></visual>
+    <collision><origin xyz="-0.22 0.004 1.086" rpy="0 0 0"/><geometry><cylinder radius="0.026" length="0.112"/></geometry></collision>
+  </link>
+  <joint name="pipe_cyl_first_fix" type="fixed"><parent link="kitchen_sink_pipes"/><child link="pipe_cyl_first"/></joint> -->
+
+  <!-- 6) 원통: pos=-0.22 -0.01 1.094 (변경 없음) -->
+  <!-- <link name="pipe_cyl_rot1">
+    <visual>   <origin xyz="-0.22 -0.01 1.094" rpy="1.57079632679 0 0"/><geometry><cylinder radius="0.023" length="0.048"/></geometry></visual>
+    <collision><origin xyz="-0.22 -0.01 1.094" rpy="1.57079632679 0 0"/><geometry><cylinder radius="0.023" length="0.048"/></geometry></collision>
+  </link>
+  <joint name="pipe_cyl_rot1_fix" type="fixed"><parent link="kitchen_sink_pipes"/><child link="pipe_cyl_rot1"/></joint> -->
+
+  <!-- 7) 원통: pos=-0.22 -0.04 1.094 (변경 없음) -->
+  <!-- <link name="pipe_cyl_rot2">
+    <visual>   <origin xyz="-0.22 -0.04 1.094" rpy="1.57079632679 0 0"/><geometry><cylinder radius="0.028" length="0.020"/></geometry></visual>
+    <collision><origin xyz="-0.22 -0.04 1.094" rpy="1.57079632679 0 0"/><geometry><cylinder radius="0.028" length="0.020"/></geometry></collision>
+  </link>
+  <joint name="pipe_cyl_rot2_fix" type="fixed"><parent link="kitchen_sink_pipes"/><child link="pipe_cyl_rot2"/></joint> -->
+
+  <!-- 8) 작은 캡슐: frame pos=-0.25 -0.042 1.094 (변경 없음) -->
+  <!-- <link name="pipe_cap_small_frame"/>
+  <joint name="pipe_cap_small_frame_fix" type="fixed">
+    <parent link="kitchen_sink_pipes"/>
+    <child  link="pipe_cap_small_frame"/>
+    <origin xyz="-0.25 -0.042 1.094" rpy="0 1.57079632679 0"/>
+  </joint>
+  <link name="pipe_cap_small">
+    <visual>   <origin xyz="0 0 0" rpy="0 0 0"/><geometry><cylinder radius="0.008" length="0.048"/></geometry></visual>
+    <collision><origin xyz="0 0 0" rpy="0 0 0"/><geometry><cylinder radius="0.008" length="0.048"/></geometry></collision>
+
+    <visual>   <origin xyz="0 0 0.024"/><geometry><sphere radius="0.008"/></geometry></visual>
+    <visual>   <origin xyz="0 0 -0.024"/><geometry><sphere radius="0.008"/></geometry></visual>
+    <collision><origin xyz="0 0 0.024"/><geometry><sphere radius="0.008"/></geometry></collision>
+    <collision><origin xyz="0 0 -0.024"/><geometry><sphere radius="0.008"/></geometry></collision>
+  </link>
+  <joint name="pipe_cap_small_fix" type="fixed"><parent link="pipe_cap_small_frame"/><child link="pipe_cap_small"/></joint>
+ -->
+
+  
 
 
   <link name="base_link">

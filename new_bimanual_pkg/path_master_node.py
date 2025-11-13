@@ -3,93 +3,33 @@
 import rclpy
 import numpy as np
 import pinocchio as pin
-import time
+import json, time
 import math
 
 from rclpy.node import Node
-from geometry_msgs.msg import Point
-from visualization_msgs.msg import Marker
-from nav_msgs.msg import Path
-from geometry_msgs.msg import PoseStamped
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from moveit_msgs.srv import GetPositionIK
-from builtin_interfaces.msg import Duration
 from sensor_msgs.msg import JointState
-from urdf_parser_py.urdf import URDF
-import yaml, os
-
-from new_bimanual_pkg.birrt import BiRRT
-from new_bimanual_pkg.constraint_birrt import ConstraintBiRRT 
-from new_bimanual_pkg.trajectory import plan_trajectory, build_spline, make_joint_trajectory_msg, clamp_eval
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSDurabilityPolicy, QoSHistoryPolicy
-
-from new_bimanual_pkg.path_simplify import simplify_path
-
-# --- constraints & constrained BiRRT helpers ---
-from new_bimanual_pkg.constraint import (
-    build_rotation_constraints,
-    build_place_constraints,
-    build_pot_grasp_projector,
-)
-
+from visualization_msgs.msg import Marker
+from nav_msgs.msg import Path
 from std_msgs.msg import String
-import json, time
+from geometry_msgs.msg import PoseStamped, Point
+from builtin_interfaces.msg import Duration
 
+from new_bimanual_pkg.BiRRT import BiRRT
+from new_bimanual_pkg.CBiRRT import ConstraintBiRRT
+from new_bimanual_pkg.trajectory import TrajectoryPlanner
+from new_bimanual_pkg.spline import Spline
+from new_bimanual_pkg.projection import pot_grasp_projector
+from new_bimanual_pkg.object_constraint import ObjectConstraint
+from new_bimanual_pkg.path_simplification import simplify_path
+from new_bimanual_pkg.constraint import is_state_valid
 
-
-def load_joint_limits(urdf_path: str, joint_limits_yaml: str, joint_names: list):
-    # URDF에서 설정한 joint_limit 값으로 lb, ub 설정
-
-    # URDF 파싱
-    with open(urdf_path, 'r') as f:
-        urdf_xml = f.read()
-    robot = URDF.from_xml_string(urdf_xml)
-
-    # URDF에서 읽은 limit 설정
-    limits = {}
-    for j in robot.joints:
-        if j.type == 'continuous':
-            limits[j.name] = (-np.pi, np.pi)
-        elif j.type in ('revolute', 'prismatic'):
-            limits[j.name] = (float(j.limit.lower), float(j.limit.upper))
-
-    if joint_limits_yaml and os.path.exists(joint_limits_yaml):
-        with open(joint_limits_yaml, 'r') as f:
-            cfg = yaml.safe_load(f) or {}
-        jlim = cfg.get('joint_limits', {})
-        for name, v in jlim.items():
-            has = v.get('has_position_limits', False)
-            if has:
-                limits[name] = (float(v['min_position']), float(v['max_position']))
-            else:
-                # has_position_limits: false 인 경우 연속 관절처럼 처리
-                limits.setdefault(name, (-np.pi, np.pi))
-
-    # 순서 정렬해서 배열 생성 (없으면 연속 관절처럼 fallback)
-    lb = []
-    ub = []
-    for nm in joint_names:
-        lo, hi = limits.get(nm, (-np.pi, np.pi))
-        lb.append(lo)
-        ub.append(hi)
-    return np.array(lb, dtype=float), np.array(ub, dtype=float)
-
-# RPY -> quaternion 
-def quat_from_rpy(roll, pitch, yaw):
-    """RPY(rad) -> quaternion [x,y,z,w] (world/arm_base_link 기준)"""
-    cr = math.cos(roll*0.5);  sr = math.sin(roll*0.5)
-    cp = math.cos(pitch*0.5); sp = math.sin(pitch*0.5)
-    cy = math.cos(yaw*0.5);   sy = math.sin(yaw*0.5)
-    qw = cr*cp*cy + sr*sp*sy
-    qx = sr*cp*cy - cr*sp*sy
-    qy = cr*sp*cy + sr*cp*sy
-    qz = cr*cp*sy - sr*sp*cy
-    return [qx, qy, qz, qw]
-
-def yaw_rot_quat(yaw_rad: float):
-    """Z축(yaw) 회전만 갖는 쿼터니언 [x,y,z,w]"""
-    c = math.cos(yaw_rad*0.5); s = math.sin(yaw_rad*0.5)
-    return [0.0, 0.0, s, c]
+from new_bimanual_pkg.utils.joint_limit import load_joint_limits
+from new_bimanual_pkg.utils.math import quat_from_rpy
+from new_bimanual_pkg.ik.trak_ik import compute_ik_via_moveit
+from new_bimanual_pkg.ik.request import _ik_request_async
 
 
 class PathNode(Node):
@@ -182,7 +122,8 @@ class PathNode(Node):
 
         base_frame = 'world' 
 
-        ik_l = self.compute_ik_via_moveit(
+        ik_l = compute_ik_via_moveit(
+            self,
             group='left_arm',
             frame_id=base_frame,
             ik_link_name=self.ee_frame_l,    
@@ -197,7 +138,8 @@ class PathNode(Node):
         if ik_l is None:
             raise RuntimeError("Left IK failed (TRAC-IK)")
 
-        ik_r = self.compute_ik_via_moveit(
+        ik_r = compute_ik_via_moveit(
+            self,
             group='right_arm',
             frame_id=base_frame,
             ik_link_name=self.ee_frame_r,    
@@ -299,27 +241,27 @@ class PathNode(Node):
         self.after_grasp_targets = [
             {   # 1) Lift
                 "frame_id": "world",
-                "pos": [0.5, 0.0, 1.11],        # pot 중심 (x,y,z)
+                "pos": [0.5, 0.0, 1.12],        # pot 중심 (x,y,z)
                 "rpy_deg": [0.0, 0.0, 0.0],    # 회전 없음
-                "eps_xy_mm": 50.0,
-                "eps_z_mm": 30.0,
-                "level_deg": 5.0,
+                "eps_xy_mm": 5.0,
+                "eps_z_mm": 5.0,
+                "level_deg": 1.0,
             },
             {   # 2) Rotate
                 "frame_id": "world",
-                "pos": [0.5, 0.0, 1.11],
-                "rpy_deg": [0.0, -55.0, 0.0],  # y축 -10°
-                "eps_xy_mm": 50.0,
-                "eps_z_mm": 30.0,
-                "level_deg": 5.0,
+                "pos": [0.5, 0.15, 1.12],
+                "rpy_deg": [0.0, -20.0, 0.0],  # y축 -10°
+                "eps_xy_mm": 5.0,
+                "eps_z_mm": 5.0,
+                "level_deg": 1.0,
             },
             {   # 3) Place
                 "frame_id": "world",
-                "pos": [0.6, 0.0, 1.15],
+                "pos": [0.6, 0.15, 1.15],
                 "rpy_deg": [0.0, -85.0, 0.0],
-                "eps_xy_mm": 50.0,
-                "eps_z_mm": 30.0,
-                "level_deg": 5.0,
+                "eps_xy_mm": 5.0,
+                "eps_z_mm": 5.0,
+                "level_deg": 1.0,
             },
         ]
 
@@ -376,14 +318,8 @@ class PathNode(Node):
 
         self._last_js_wall = 0.0
 
-
-
-
     def _check_valid(self, q, name: str, constraints=None) -> bool:
-        """q가 조인트 리밋/충돌/경로제약을 모두 만족하는지 체크하고 로그 남김"""
         try:
-            import numpy as np
-            from new_bimanual_pkg.constraint import is_state_valid
             ok = is_state_valid(
                 q=np.asarray(q, float),
                 joint_names=self.joint_names,
@@ -397,189 +333,11 @@ class PathNode(Node):
             return False
 
         if ok:
-            # 너무 자주 찍혀서 rosout 퍼블리셔 경합을 유발하므로 끈다
-            # self.get_logger().info(f"[validity] {name}: ✅ valid")
             pass
         else:
-            # 실패만 가끔 보이도록 유지하거나 이것도 끄고 싶으면 주석
             self.get_logger().warn(f"[validity] {name}: ❌ invalid (limit/collision/constraints)")
         return ok
-    
-    def make_quiet_is_valid(self):
-        """
-        path simplification에서 쓸 '로그 안 찍는' 유효성 검사 콜백.
-        _check_valid처럼 로그를 남기지 않아 rosout 퍼블리셔 중복 경고를 막는다.
-        """
-        from new_bimanual_pkg.constraint import is_state_valid
-        jn = self.joint_names
-        lb = self.lb; ub = self.ub
-        grp = self.group_name
 
-        def _quiet(q, constraints=None) -> bool:
-            try:
-                return bool(is_state_valid(
-                    q=np.asarray(q, float),
-                    joint_names=jn,
-                    lb=lb, ub=ub,
-                    group_name=grp,
-                    timeout=0.1,      # 간소화용은 짧게
-                    constraints=constraints
-                ))
-            except Exception:
-                # 여기서 경고도 남기지 말자 (간소화 루프는 호출이 매우 많음)
-                return False
-        return _quiet
-
-
-    # ee frame의 quaternion 값 반환
-    def fk_quat_at(self, q: np.ndarray, ee_frame: str):
-        pin.forwardKinematics(self.model, self.data, q)
-        pin.updateFramePlacements(self.model, self.data)
-        fid = self.model.getFrameId(ee_frame)
-        T = self.data.oMf[fid]
-        quat = pin.Quaternion(T.rotation).coeffs()  # [x,y,z,w]
-        return [float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])]
-    
-    # TRAK IK 호출
-    def compute_ik_via_moveit(self, group, frame_id, ik_link_name, pos, quat,
-                              seed_names, seed_values, timeout=0.2, attempts=8,
-                              avoid_collisions=False, wait_mode="spin"):
-        
-        # 서비스 대기
-        if not self.ik_cli.wait_for_service(timeout_sec=5.0):
-            self.get_logger().error("'/compute_ik' service not available")
-            return None
-
-        # 안전 캐스팅
-        px, py, pz = float(pos[0]), float(pos[1]), float(pos[2])
-        qx, qy, qz, qw = float(quat[0]), float(quat[1]), float(quat[2]), float(quat[3])
-
-        # 시드는 리스트로 작업
-        seed_names = list(seed_names)
-        base_seed  = [float(v) for v in seed_values]
-
-        self.get_logger().info(f"[IK] group={group}, pos={pos}, quat={quat}")
-
-        for k in range(max(1, int(attempts))):
-            req = GetPositionIK.Request()
-            req.ik_request.group_name = group
-            req.ik_request.ik_link_name = ik_link_name
-            req.ik_request.avoid_collisions = bool(avoid_collisions)
-
-            ps = PoseStamped()
-            ps.header.frame_id = frame_id            # ← MoveIt planning frame과 맞추세요 (보통 robot_description의 base)
-            ps.header.stamp = self.get_clock().now().to_msg()
-            ps.pose.position.x = px
-            ps.pose.position.y = py
-            ps.pose.position.z = pz
-            ps.pose.orientation.x = qx
-            ps.pose.orientation.y = qy
-            ps.pose.orientation.z = qz
-            ps.pose.orientation.w = qw
-            req.ik_request.pose_stamped = ps
-
-            req.ik_request.timeout = Duration(sec=2)
-
-            # 시드 (k>0일 때 약간 섞어서 재시도)
-            if k == 0:
-                seed = base_seed
-            else:
-                jitter = np.random.normal(scale=1e-3, size=len(base_seed))
-                seed = (np.array(base_seed) + jitter).tolist()
-
-            req.ik_request.robot_state.joint_state = JointState()
-            req.ik_request.robot_state.joint_state.name = seed_names
-            req.ik_request.robot_state.joint_state.position = seed
-
-            # ROS2는 timeout만 지원(필수)
-            req.ik_request.timeout = Duration(
-                sec=int(timeout),
-                nanosec=int((timeout - int(timeout)) * 1e9)
-            )
-
-            future = self.ik_cli.call_async(req)
-
-            if wait_mode == "spin":
-                # executor가 아직 스핀 전(예: __init__ 단계)에서 사용
-                rclpy.spin_until_future_complete(self, future)
-            else:
-                # 콜백/타이머 안에서 사용 (교착 방지)
-                while rclpy.ok() and not future.done():
-                    time.sleep(0.002)
-
-            res = future.result()
-
-            if res is None:
-                self.get_logger().error("IK service call failed (no response)")
-                return None
-
-            if res.error_code.val == res.error_code.SUCCESS:
-                names = list(res.solution.joint_state.name)
-                vals  = list(res.solution.joint_state.position)
-                return dict(zip(names, vals))
-
-            # 실패 로그는 첫/마지막 시도에만 간단히
-            if k == 0 or k == attempts - 1:
-                self.get_logger().warn(f"IK attempt {k+1}/{attempts} failed (error_code={res.error_code.val})")
-
-            # 짧게 쉬고 재시도(선택)
-            time.sleep(0.01)
-
-        return None
-    
-    def _ik_request_async(self, group, frame_id, ik_link_name, pos, quat,
-                        seed_names, seed_values, timeout=0.8, avoid_collisions=True):
-        req = GetPositionIK.Request()
-        req.ik_request.group_name = group
-        req.ik_request.ik_link_name = ik_link_name
-        req.ik_request.avoid_collisions = bool(avoid_collisions)
-
-        ps = PoseStamped()
-        ps.header.frame_id = frame_id
-        ps.header.stamp = self.get_clock().now().to_msg()
-        ps.pose.position.x, ps.pose.position.y, ps.pose.position.z = map(float, pos)
-        ps.pose.orientation.x, ps.pose.orientation.y, ps.pose.orientation.z, ps.pose.orientation.w = map(float, quat)
-        req.ik_request.pose_stamped = ps
-
-        # MoveIt의 IK 내부 타임아웃
-        req.ik_request.timeout = Duration(
-            sec=int(timeout),
-            nanosec=int((timeout - int(timeout)) * 1e9)
-        )
-
-        # 시드
-        js = JointState()
-        js.name = list(seed_names)
-        js.position = [float(v) for v in seed_values]
-        req.ik_request.robot_state.joint_state = js
-
-        # 바로 비동기 요청만 보내고, 여기서는 절대 기다리지 않음
-        return self.ik_cli.call_async(req)
-
-    
-    # 4) 양팔 IK (seed는 현재 자세)
-    def call_ik(self, group, ik_link_name, T: pin.SE3,
-                seed_names, seed_values,
-                timeout=0.8, attempts=15, avoid_collisions=True,
-                frame_id="world", wait_mode="spin"):
-        q = pin.Quaternion(T.rotation).coeffs()
-        return self.compute_ik_via_moveit(
-            group=group,
-            frame_id=frame_id,
-            ik_link_name=ik_link_name,
-            pos=T.translation.tolist(),
-            quat=[float(q[0]), float(q[1]), float(q[2]), float(q[3])],
-            seed_names=seed_names,
-            seed_values=seed_values,
-            timeout=timeout,
-            attempts=attempts,
-            avoid_collisions=avoid_collisions,
-            wait_mode=wait_mode
-        )
-
-
-
-    
     # FK (joint space -> 3D point for current ee_frame_id)
     def q_to_point(self, q: np.ndarray) -> Point:
         pin.forwardKinematics(self.model, self.data, q)
@@ -706,7 +464,6 @@ class PathNode(Node):
             smooth_iters=0            # 폴백 경로일 때만 의미 (OMPL은 자체 B-spline smooth 사용)
         )
         
-        # ---------- 여기부터 추가 (기존 self.publish_joint_trajectory(...) 삭제/대체) ----------
         # full shape: (N, 14)  ← N: 웨이포인트 수
         dof_each = 7
         full = np.asarray(full)
@@ -720,34 +477,42 @@ class PathNode(Node):
         qdd_max_R = np.array([3.0]*dof_each)
 
         # TOPP→스플라인→균일샘플 (왼팔)
-        outL = plan_trajectory(
-            Q_L, qd_max_L, qdd_max_L,
-            ds=0.005, sdot_start=0.0,
-            stop_window_s=0.05,     # 끝에서만 감속
-            alpha_floor=1.5,        # 중앙부 속도 바닥(상한의 20%)
-            v_min_time=1e-4,
-            sample_hz=10.0, max_points=100000
-        )
-
-        # TOPP→스플라인→균일샘플 (오른팔)
-        outR = plan_trajectory(
-            Q_R, qd_max_R, qdd_max_R,
-            ds=0.005, sdot_start=0.0,
+        tp_L = TrajectoryPlanner(
+            ds=0.005,
+            sdot_start=0.0,
             stop_window_s=0.05,
             alpha_floor=1.5,
             v_min_time=1e-4,
-            sample_hz=10.0, max_points=100000
+            sample_hz=10.0,
+            max_points=100000,
         )
 
+        outL = tp_L.plan(Q_L, qd_max_L, qdd_max_L)
+
+
+        # TOPP→스플라인→균일샘플 (오른팔)
+        tp_R = TrajectoryPlanner(
+            ds=0.005,
+            sdot_start=0.0,
+            stop_window_s=0.05,
+            alpha_floor=1.5,
+            v_min_time=1e-4,
+            sample_hz=10.0,
+            max_points=100000,
+        )
+
+        outR = tp_R.plan(Q_R, qd_max_R, qdd_max_R)
+
+
         # JointTrajectory 메시지로 변환 & 퍼블리시 (두 팔 따로)
-        trajL = make_joint_trajectory_msg(
+        trajL = TrajectoryPlanner.make_joint_trajectory_msg(
             joint_names=self.left_names,
             t0=float(outL["t_samples"][0]),
             t_samples=outL["t_samples"],
             Q_samples=outL["Q_samples"],
             Qd_samples=outL["Qd_samples"],
         )
-        trajR = make_joint_trajectory_msg(
+        trajR = TrajectoryPlanner.make_joint_trajectory_msg(
             joint_names=self.right_names,
             t0=float(outR["t_samples"][0]),
             t_samples=outR["t_samples"],
@@ -789,8 +554,8 @@ class PathNode(Node):
         controller_hz = 100.0  # ← 실제 joint_trajectory_controller 주기
         dt = 1.0/controller_hz
 
-        splineL = build_spline(outL["t_knots"], Q_L, outL["qdot_knots"])
-        splineR = build_spline(outR["t_knots"], Q_R, outR["qdot_knots"])
+        splineL = Spline(outL["t_knots"], Q_L, outL["qdot_knots"])
+        splineR = Spline(outR["t_knots"], Q_R, outR["qdot_knots"])
 
         t0L, t1L = float(outL["t_samples"][0]), float(outL["t_samples"][-1])
         t0R, t1R = float(outR["t_samples"][0]), float(outR["t_samples"][-1])
@@ -800,11 +565,10 @@ class PathNode(Node):
 
         t_common = t0 + np.arange(0.0, T + 0.5*dt, dt)
 
-        # ===== 여기에 추가 =====
         QL_sync, QLd_sync, QR_sync, QRd_sync = [], [], [], []
         for t in t_common:
-            qL, qLd = clamp_eval(splineL, t)
-            qR, qRd = clamp_eval(splineR, t)
+            qL, qLd = Spline.clamp_eval(splineL, t)
+            qR, qRd = Spline.clamp_eval(splineR, t)
             QL_sync.append(qL);  QLd_sync.append(qLd)
             QR_sync.append(qR);  QRd_sync.append(qRd)
 
@@ -816,7 +580,7 @@ class PathNode(Node):
         Q_sync  = np.hstack([QL_sync,  QR_sync])   # (M,14)
         Qd_sync = np.hstack([QLd_sync, QRd_sync])  # (M,14)
 
-        traj_all = make_joint_trajectory_msg(
+        traj_all = TrajectoryPlanner.make_joint_trajectory_msg(
             joint_names=(self.left_names + self.right_names),
             t0=t0,
             t_samples=(t_common - t0),   # time_from_start 기준이면 0부터
@@ -1054,7 +818,7 @@ class PathNode(Node):
         self._last_joint_state = [msg.position[msg.name.index(n)] for n in self.joint_names if n in msg.name]
 
         # tol 설정(라디안 / 라디안/초)
-        pos_tol = 0.01    # 위치 오차 범위 0.57° 
+        pos_tol = 0.02    # 위치 오차 범위 0.57° 
         vel_tol = 0.02    # 
         # JointState.velocity 길이가 0이거나 일부만 있으면 속도 판정 생략 가능
         have_vel = (len(msg.velocity) == len(msg.name) and len(msg.velocity) > 0)
@@ -1189,7 +953,7 @@ class PathNode(Node):
         self._T_pot0 = T_pot0
 
         # projector 생성 (재사용)
-        self._grasp_proj = build_pot_grasp_projector(
+        self._grasp_proj = pot_grasp_projector(
             self.model, self.data,
             ee_frame_l=self.ee_frame_l,
             ee_frame_r=self.ee_frame_r,
@@ -1219,8 +983,9 @@ class PathNode(Node):
             ps.pose.orientation.x, ps.pose.orientation.y, ps.pose.orientation.z, ps.pose.orientation.w = map(float, q)
             return ps
 
-        cons_left  = build_place_constraints(self.ee_frame_l, _to_ps(TWL_goal), 80.0, 60.0, 5.0)
-        cons_right = build_place_constraints(self.ee_frame_r, _to_ps(TWR_goal), 80.0, 60.0, 5.0)
+        obj_cons = ObjectConstraint()
+        cons_left  = obj_cons.place_constraints(self.ee_frame_l, _to_ps(TWL_goal), 80.0, 60.0, 5.0)
+        cons_right = obj_cons.place_constraints(self.ee_frame_r, _to_ps(TWR_goal), 80.0, 60.0, 5.0)
         from moveit_msgs.msg import Constraints
         combined = Constraints()
         combined.name = f"bimanual_{tag}"
@@ -1237,13 +1002,13 @@ class PathNode(Node):
         seed_right = [float(x) for x in q_start[nL:nL+nR]]
 
         qL = pin.Quaternion(TWL_goal.rotation).coeffs()
-        ik_l = self.compute_ik_via_moveit("left_arm","world", self.ee_frame_l,
+        ik_l = compute_ik_via_moveit(self,"left_arm","world", self.ee_frame_l,
             TWL_goal.translation.tolist(), [float(qL[0]),float(qL[1]),float(qL[2]),float(qL[3])],
             self.left_names, seed_left, timeout=0.8, attempts=12, avoid_collisions=True, wait_mode="poll")
         if ik_l is None: return None, None
 
         qR = pin.Quaternion(TWR_goal.rotation).coeffs()
-        ik_r = self.compute_ik_via_moveit("right_arm","world", self.ee_frame_r,
+        ik_r = compute_ik_via_moveit(self,"right_arm","world", self.ee_frame_r,
             TWR_goal.translation.tolist(), [float(qR[0]),float(qR[1]),float(qR[2]),float(qR[3])],
             self.right_names, seed_right, timeout=0.8, attempts=12, avoid_collisions=True, wait_mode="poll")
         if ik_r is None: return None, None
@@ -1359,7 +1124,7 @@ class PathNode(Node):
 
         # pot 초기 pose (world 좌표)
         T_pot0 = pin.SE3(np.eye(3), np.array([0.5, 0.0, 1.0051]))
-        proj_spec = build_pot_grasp_projector(
+        proj_spec = pot_grasp_projector(
                 self.model, self.data,
                 ee_frame_l="gripper_l_rh_p12_rn_base",
                 ee_frame_r="gripper_r_rh_p12_rn_base",
@@ -1374,14 +1139,15 @@ class PathNode(Node):
         cplanner.set_projector(proj_spec)
         self.get_logger().info("[CBiRRT] grasp projector set (pot handles).")
 
+        obj_cons = ObjectConstraint()
         # MoveIt Constraints 만들기 (왼/오른)
-        cons_left = build_place_constraints(
+        cons_left = obj_cons.place_constraints(
             ee_link=self.ee_frame_l, place_pose_world=ps_left,
             eps_xy_mm=float(cfg.get("eps_xy_mm", 150.0)),
             eps_z_mm=float(cfg.get("eps_z_mm", 150.0)),
             level_deg=float(cfg.get("level_deg", 10.0)),
         )
-        cons_right = build_place_constraints(
+        cons_right = obj_cons.place_constraints(
             ee_link=self.ee_frame_r, place_pose_world=ps_right,
             eps_xy_mm=float(cfg.get("eps_xy_mm", 150.0)),
             eps_z_mm=float(cfg.get("eps_z_mm", 150.0)),
@@ -1428,7 +1194,7 @@ class PathNode(Node):
         # 왼팔 IK 비동기 시작
         self.get_logger().info("[CBiRRT] calling IK (left) ASYNC...")
         qL = pin.Quaternion(TWL_goal.rotation).coeffs()
-        futL = self._ik_request_async(
+        futL = _ik_request_async(
             group="left_arm",
             frame_id=self._abs_place_ctx["frame_id"],
             ik_link_name=self.ee_frame_l,
@@ -1503,7 +1269,7 @@ class PathNode(Node):
         self.get_logger().info("[CBiRRT] calling IK (right) ASYNC...")
         TWR_goal = self._abs_place_ctx["TWR_goal"]
         qR = pin.Quaternion(TWR_goal.rotation).coeffs()
-        futR = self._ik_request_async(
+        futR = _ik_request_async(
             group="right_arm",
             frame_id=self._abs_place_ctx["frame_id"],
             ik_link_name=self.ee_frame_r,
@@ -1593,25 +1359,25 @@ class PathNode(Node):
         qd_max_L  = np.array([1.5]*dof_each); qdd_max_L = np.array([3.0]*dof_each)
         qd_max_R  = np.array([1.5]*dof_each); qdd_max_R = np.array([3.0]*dof_each)
 
-        outL = plan_trajectory(
+        outL = TrajectoryPlanner(
             Q_L, qd_max_L, qdd_max_L,
             ds=0.005, sdot_start=0.0, stop_window_s=0.05, alpha_floor=1.5,
             v_min_time=1e-4, sample_hz=10.0, max_points=100000
         )
-        outR = plan_trajectory(
+        outR = TrajectoryPlanner(
             Q_R, qd_max_R, qdd_max_R,
             ds=0.005, sdot_start=0.0, stop_window_s=0.05, alpha_floor=1.5,
             v_min_time=1e-4, sample_hz=10.0, max_points=100000
         )
 
-        trajL = make_joint_trajectory_msg(
+        trajL = TrajectoryPlanner.make_joint_trajectory_msg(
             joint_names=self.left_names,
             t0=0.0,
             t_samples=(outL["t_samples"] - outL["t_samples"][0]),
             Q_samples=outL["Q_samples"],
             Qd_samples=outL["Qd_samples"],
         )
-        trajR = make_joint_trajectory_msg(
+        trajR = TrajectoryPlanner.make_joint_trajectory_msg(
             joint_names=self.right_names,
             t0=0.0,
             t_samples=(outR["t_samples"] - outR["t_samples"][0]),
@@ -1645,8 +1411,8 @@ class PathNode(Node):
         # 동기화 트젝(100Hz)
         controller_hz = 100.0
         dt = 1.0/controller_hz
-        splineL = build_spline(outL["t_knots"], Q_L, outL["qdot_knots"])
-        splineR = build_spline(outR["t_knots"], Q_R, outR["qdot_knots"])
+        splineL = Spline(outL["t_knots"], Q_L, outL["qdot_knots"])
+        splineR = Spline(outR["t_knots"], Q_R, outR["qdot_knots"])
         T_L = float(outL["t_samples"][-1] - outL["t_samples"][0])
         T_R = float(outR["t_samples"][-1] - outR["t_samples"][0])
         T = max(T_L, T_R)
@@ -1654,8 +1420,8 @@ class PathNode(Node):
 
         QL_sync, QLd_sync, QR_sync, QRd_sync = [], [], [], []
         for t in t_common:
-            qL, qLd = clamp_eval(splineL, outL["t_samples"][0] + t)
-            qR, qRd = clamp_eval(splineR, outR["t_samples"][0] + t)
+            qL, qLd = Spline.clamp_eval(splineL, outL["t_samples"][0] + t)
+            qR, qRd = Spline.clamp_eval(splineR, outR["t_samples"][0] + t)
             QL_sync.append(qL); QLd_sync.append(qLd)
             QR_sync.append(qR); QRd_sync.append(qRd)
         QL_sync  = np.vstack(QL_sync);  QLd_sync = np.vstack(QLd_sync)
@@ -1663,7 +1429,7 @@ class PathNode(Node):
         Q_sync  = np.hstack([QL_sync, QR_sync])
         Qd_sync = np.hstack([QLd_sync, QRd_sync])
 
-        traj_all = make_joint_trajectory_msg(
+        traj_all = TrajectoryPlanner.make_joint_trajectory_msg(
             joint_names=(self.left_names + self.right_names),
             t0=0.0,
             t_samples=t_common,
@@ -1750,17 +1516,35 @@ class PathNode(Node):
         Q_R = full_path[:, dof_each:2*dof_each]
 
         qd_max = np.array([1.5]*dof_each); qdd_max = np.array([3.0]*dof_each)
-        outL = plan_trajectory(Q_L, qd_max, qdd_max, ds=0.005, sdot_start=0.0,
-                            stop_window_s=0.05, alpha_floor=1.5, v_min_time=1e-4,
-                            sample_hz=10.0, max_points=100000)
-        outR = plan_trajectory(Q_R, qd_max, qdd_max, ds=0.005, sdot_start=0.0,
-                            stop_window_s=0.05, alpha_floor=1.5, v_min_time=1e-4,
-                            sample_hz=10.0, max_points=100000)
+        tp_L = TrajectoryPlanner(
+            ds=0.005,
+            sdot_start=0.0,
+            stop_window_s=0.05,
+            alpha_floor=1.5,
+            v_min_time=1e-4,
+            sample_hz=10.0,
+            max_points=100000,
+        )
+
+        outL = tp_L.plan(Q_L, qd_max, qdd_max)
+
+        tp_R = TrajectoryPlanner(
+            ds=0.005,
+            sdot_start=0.0,
+            stop_window_s=0.05,
+            alpha_floor=1.5,
+            v_min_time=1e-4,
+            sample_hz=10.0,
+            max_points=100000,
+        )
+
+        outR = tp_R.plan(Q_R, qd_max, qdd_max)
+
 
         # 좌/우 따로
-        trajL = make_joint_trajectory_msg(self.left_names, 0.0,
+        trajL = TrajectoryPlanner.make_joint_trajectory_msg(self.left_names, 0.0,
             (outL["t_samples"]-outL["t_samples"][0]), outL["Q_samples"], outL["Qd_samples"])
-        trajR = make_joint_trajectory_msg(self.right_names, 0.0,
+        trajR = TrajectoryPlanner.make_joint_trajectory_msg(self.right_names, 0.0,
             (outR["t_samples"]-outR["t_samples"][0]), outR["Q_samples"], outR["Qd_samples"])
         now = self.get_clock().now().to_msg()
         if trajL: trajL.header.frame_id='world'; trajL.header.stamp=now; self.traj_pub_left.publish(trajL)
@@ -1773,8 +1557,8 @@ class PathNode(Node):
 
         # 동기화된 하나의 JointTrajectory (옵션)
         controller_hz = 100.0; dt = 1.0/controller_hz
-        splineL = build_spline(outL["t_knots"], Q_L, outL["qdot_knots"])
-        splineR = build_spline(outR["t_knots"], Q_R, outR["qdot_knots"])
+        splineL = Spline(outL["t_knots"], Q_L, outL["qdot_knots"])
+        splineR = Spline(outR["t_knots"], Q_R, outR["qdot_knots"])
         T_L = float(outL["t_samples"][-1] - outL["t_samples"][0])
         T_R = float(outR["t_samples"][-1] - outR["t_samples"][0])
         T = max(T_L, T_R)
@@ -1782,14 +1566,14 @@ class PathNode(Node):
 
         QL_sync, QLd_sync, QR_sync, QRd_sync = [], [], [], []
         for t in t_common:
-            qL, qLd = clamp_eval(splineL, outL["t_samples"][0] + t)
-            qR, qRd = clamp_eval(splineR, outR["t_samples"][0] + t)
+            qL, qLd = Spline.clamp_eval(splineL, outL["t_samples"][0] + t)
+            qR, qRd = Spline.clamp_eval(splineR, outR["t_samples"][0] + t)
             QL_sync.append(qL); QLd_sync.append(qLd)
             QR_sync.append(qR); QRd_sync.append(qRd)
         Q_sync  = np.hstack([np.vstack(QL_sync),  np.vstack(QR_sync)])
         Qd_sync = np.hstack([np.vstack(QLd_sync), np.vstack(QRd_sync)])
 
-        traj_all = make_joint_trajectory_msg(
+        traj_all = TrajectoryPlanner.make_joint_trajectory_msg(
             joint_names=(self.left_names + self.right_names),
             t0=0.0, t_samples=t_common, Q_samples=Q_sync, Qd_samples=Qd_sync
         )
@@ -1826,9 +1610,10 @@ class PathNode(Node):
             ps.pose.orientation.x, ps.pose.orientation.y, ps.pose.orientation.z, ps.pose.orientation.w = map(float, q)
             return ps
 
+        obj_cons = ObjectConstraint()
         # 제약 생성
-        cons_left  = build_place_constraints(self.ee_frame_l, _to_ps(TWL_goal), 80.0, 60.0, 5.0)
-        cons_right = build_place_constraints(self.ee_frame_r, _to_ps(TWR_goal), 80.0, 60.0, 5.0)
+        cons_left  = obj_cons.place_constraints(self.ee_frame_l, _to_ps(TWL_goal), 80.0, 60.0, 5.0)
+        cons_right = obj_cons.place_constraints(self.ee_frame_r, _to_ps(TWR_goal), 80.0, 60.0, 5.0)
         from moveit_msgs.msg import Constraints
         combined = Constraints()
         combined.name = f"bimanual_{tag}"
@@ -1845,13 +1630,13 @@ class PathNode(Node):
         seed_right = [float(x) for x in q_start[nL:nL+len(self.right_names)]]
 
         qL = pin.Quaternion(TWL_goal.rotation).coeffs()
-        ik_l = self.compute_ik_via_moveit("left_arm","world", self.ee_frame_l,
+        ik_l = compute_ik_via_moveit(self,"left_arm","world", self.ee_frame_l,
             TWL_goal.translation.tolist(), [float(qL[0]),float(qL[1]),float(qL[2]),float(qL[3])],
             self.left_names, seed_left, timeout=0.8, attempts=12, avoid_collisions=True, wait_mode="poll")
         if ik_l is None: return None, None
 
         qR = pin.Quaternion(TWR_goal.rotation).coeffs()
-        ik_r = self.compute_ik_via_moveit("right_arm","world", self.ee_frame_r,
+        ik_r = compute_ik_via_moveit(self,"right_arm","world", self.ee_frame_r,
             TWR_goal.translation.tolist(), [float(qR[0]),float(qR[1]),float(qR[2]),float(qR[3])],
             self.right_names, seed_right, timeout=0.8, attempts=12, avoid_collisions=True, wait_mode="poll")
         if ik_r is None: return None, None
