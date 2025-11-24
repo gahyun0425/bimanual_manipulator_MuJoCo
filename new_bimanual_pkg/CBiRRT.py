@@ -43,7 +43,7 @@ class ConstraintBiRRT:
             joint_names=self.joint_names,
             lb=self.lb, ub=self.ub,
             group_name=self.group_name,
-            constraints=constraints,
+            constraints=None,
             timeout=2.0
         )
 

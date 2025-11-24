@@ -36,6 +36,8 @@ class PathNode(Node):
     def __init__(self):
         super().__init__('path_node')
 
+        self._tsrrt_total_time = 0.0
+
         from rclpy.callback_groups import ReentrantCallbackGroup
         self.cbgroup = ReentrantCallbackGroup()
 
@@ -964,82 +966,6 @@ class PathNode(Node):
         )
         self.get_logger().info("[CBiRRT] Grasp projector prepared.")
 
-    # ★ ADD: 단일 세그먼트 C-BiRRT (publish 하지 않음)
-    def _plan_cbirrt_segment(self, q_start: np.ndarray, T_pot_goal: pin.SE3, tag: str):
-        # 1) projector 없으면 준비
-        if not hasattr(self, "_grasp_proj"):
-            self._make_grasp_projector_once()
-
-        # 2) EE 목표 (pot 목표 * 파지 시 측정 상대자세 유지)
-        TWL_goal = T_pot_goal * self._T_l_in_pot_meas
-        TWR_goal = T_pot_goal * self._T_r_in_pot_meas
-
-        # 3) MoveIt Constraints (양팔 place 제약)
-        def _to_ps(T: pin.SE3):
-            ps = PoseStamped()
-            ps.header.frame_id = 'world'
-            ps.pose.position.x, ps.pose.position.y, ps.pose.position.z = T.translation.tolist()
-            q = pin.Quaternion(T.rotation).coeffs()
-            ps.pose.orientation.x, ps.pose.orientation.y, ps.pose.orientation.z, ps.pose.orientation.w = map(float, q)
-            return ps
-
-        obj_cons = ObjectConstraint()
-        cons_left  = obj_cons.place_constraints(self.ee_frame_l, _to_ps(TWL_goal), 80.0, 60.0, 5.0)
-        cons_right = obj_cons.place_constraints(self.ee_frame_r, _to_ps(TWR_goal), 80.0, 60.0, 5.0)
-        from moveit_msgs.msg import Constraints
-        combined = Constraints()
-        combined.name = f"bimanual_{tag}"
-        combined.joint_constraints.extend(cons_left.joint_constraints)
-        combined.joint_constraints.extend(cons_right.joint_constraints)
-        combined.position_constraints.extend(cons_left.position_constraints)
-        combined.position_constraints.extend(cons_right.position_constraints)
-        combined.orientation_constraints.extend(cons_left.orientation_constraints)
-        combined.orientation_constraints.extend(cons_right.orientation_constraints)
-
-        # 4) IK로 q_goal 만들기 (시드는 q_start 좌/우 분리)
-        nL = len(self.left_names); nR = len(self.right_names)
-        seed_left  = [float(x) for x in q_start[:nL]]
-        seed_right = [float(x) for x in q_start[nL:nL+nR]]
-
-        qL = pin.Quaternion(TWL_goal.rotation).coeffs()
-        ik_l = compute_ik_via_moveit(self,"left_arm","world", self.ee_frame_l,
-            TWL_goal.translation.tolist(), [float(qL[0]),float(qL[1]),float(qL[2]),float(qL[3])],
-            self.left_names, seed_left, timeout=0.8, attempts=12, avoid_collisions=True, wait_mode="poll")
-        if ik_l is None: return None, None
-
-        qR = pin.Quaternion(TWR_goal.rotation).coeffs()
-        ik_r = compute_ik_via_moveit(self,"right_arm","world", self.ee_frame_r,
-            TWR_goal.translation.tolist(), [float(qR[0]),float(qR[1]),float(qR[2]),float(qR[3])],
-            self.right_names, seed_right, timeout=0.8, attempts=12, avoid_collisions=True, wait_mode="poll")
-        if ik_r is None: return None, None
-
-        q_goal = q_start.copy()
-        for i,nm in enumerate(self.left_names):  q_goal[i]   = float(ik_l[nm])
-        for i,nm in enumerate(self.right_names): q_goal[nL+i] = float(ik_r[nm])
-
-        # 5) 계획기 세팅 & solve
-        cplanner = ConstraintBiRRT(
-            joint_names=self.joint_names, lb=self.lb, ub=self.ub, group_name=self.group_name,
-            state_dim=len(self.joint_names), max_iter=4000, step_size=0.01, edge_check_res=0.01)
-        cplanner.set_projector(self._grasp_proj)
-        cplanner.set_constraints(combined)
-
-        if not self._check_valid(q_start, f"{tag}_start", constraints=None): return None, None
-        if not self._check_valid(q_goal,  f"{tag}_goal",  constraints=combined): return None, None
-
-        cplanner.set_start(q_start)
-        cplanner.set_goal(q_goal)
-        ok, path = cplanner.solve(max_time=12.0)
-        if not ok or path is None: return None, None
-
-        path = np.asarray(path, float)
-        q_end = path[-1]
-        return path, q_end
-
-
-
-
-
     def _place_absolute_and_publish(self):
         # 0) 준비: 현재(q_start)에서 EE-EE 상대변환 저장
         if hasattr(self, "_last_joint_state"):
@@ -1471,6 +1397,7 @@ class PathNode(Node):
 
     # ★ ADD: 세그먼트 경로를 중복 없이 이어붙이기
     def _cbirrt_sequence_and_publish(self):
+        self._tsrrt_total_time = 0.0
         if hasattr(self, "_last_joint_state"):
             q_start = np.array(self._last_joint_state, float)
         else:
@@ -1588,6 +1515,10 @@ class PathNode(Node):
         if trajR and trajR.points:
             for nm, q in zip(self.right_names, trajR.points[-1].positions): goal_map[nm]=float(q)
         
+        self.get_logger().info(
+            f"[METRIC] TS-RRT total solve time (3-waypoints) = {self._tsrrt_total_time:.3f}s"
+        )
+
         self._arm_arrival(goal_map, mode='open')
         self.get_logger().info('Arrival action set: OPEN when goal is reached.')
 
@@ -1656,8 +1587,15 @@ class PathNode(Node):
         if not self._check_valid(q_goal,  f"{tag}_goal",  constraints=combined): return None, None
 
         cplanner.set_start(q_start); cplanner.set_goal(q_goal)
+        t0 = time.time()  # 시작 시간 (wall-clock)
         ok, path = cplanner.solve(max_time=12.0)
+        dt = time.time() - t0  # 경로 생성에 걸린 시간
+        self.get_logger().info(
+            f"[METRIC] CBiRRT {tag} solve time = {dt:.3f}s (ok={ok})"
+        )
         if not ok or path is None: return None, None
+
+        self._tsrrt_total_time += dt
 
         path = np.asarray(path, float)
         return path, path[-1]
